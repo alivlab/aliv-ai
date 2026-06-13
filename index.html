@@ -2,17 +2,33 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8" />
-  <title>Aliv AI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aliv</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <main>
-    <h1>Aliv AI</h1>
+  <div class="bg"></div>
 
-    <div id="messages"></div>
+  <main class="app">
+    <section class="hero">
+      <div class="badge">AI assistant</div>
+      <h1>Fikrini yaz.<br>Gerisini birlikte çözelim.</h1>
+      <p>Günlük sorular, matematik, kod, metin ve fikir üretimi için sade ama güçlü bir sohbet alanı.</p>
+    </section>
 
-    <textarea id="message" placeholder="Bir şey yaz..."></textarea>
-    <button id="sendBtn">Gönder</button>
+    <section class="chat-card">
+      <div id="messages" class="messages">
+        <div class="welcome">
+          <span>✦</span>
+          <p>Merhaba. Bana bir soru sor, fikir ver ya da bir şey üretmemi iste.</p>
+        </div>
+      </div>
+
+      <div class="composer">
+        <textarea id="message" placeholder="Bir şey yaz..."></textarea>
+        <button id="sendBtn">Gönder</button>
+      </div>
+    </section>
   </main>
 
   <script src="app.js"></script>
