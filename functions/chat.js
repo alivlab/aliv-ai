@@ -3,25 +3,35 @@ export async function onRequestPost(context) {
     const { request, env } = context;
     const body = await request.json();
 
-    const response = await fetch("https://opencode.ai/zen/v1/responses", {
+    const response = await fetch("https://opencode.ai/zen/v1/messages", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${env.OPENCODE_API_KEY}`
+        "x-api-key": env.OPENCODE_API_KEY,
+        "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
         model: "minimax-m2.5-free",
-        input: body.message
+        max_tokens: 1000,
+        messages: [
+          {
+            role: "user",
+            content: body.message
+          }
+        ]
       })
     });
 
     const data = await response.json();
 
+    if (!response.ok) {
+      return Response.json({
+        error: JSON.stringify(data)
+      }, { status: 500 });
+    }
+
     return Response.json({
-      reply:
-        data.output_text ||
-        data.output?.[0]?.content?.[0]?.text ||
-        JSON.stringify(data)
+      reply: data.content?.[0]?.text || JSON.stringify(data)
     });
 
   } catch (err) {
