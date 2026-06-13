@@ -3,31 +3,25 @@ export async function onRequestPost(context) {
     const { request, env } = context;
     const body = await request.json();
 
-    const userMessage = body.message;
-
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const response = await fetch("https://opencode.ai/zen/v1/responses", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": env.CLAUDE_API_KEY,
-        "anthropic-version": "2023-06-01"
+        "Authorization": `Bearer ${env.OPENCODE_API_KEY}`
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1000,
-        messages: [
-          {
-            role: "user",
-            content: userMessage
-          }
-        ]
+        model: "minimax-m2.5-free",
+        input: body.message
       })
     });
 
     const data = await response.json();
 
     return Response.json({
-      reply: data.content?.[0]?.text || "Cevap alınamadı."
+      reply:
+        data.output_text ||
+        data.output?.[0]?.content?.[0]?.text ||
+        JSON.stringify(data)
     });
 
   } catch (err) {
