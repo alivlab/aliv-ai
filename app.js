@@ -6,14 +6,47 @@ const fileInput = document.getElementById("fileInput");
 const filePreview = document.getElementById("filePreview");
 
 let selectedFile = null;
+let history = [];
+
+function removeEmpty() {
+  const empty = document.querySelector(".empty");
+  if (empty) empty.remove();
+}
 
 function addMessage(text, type) {
-  const div = document.createElement("div");
-  div.className = `msg ${type}`;
-  div.innerText = text;
-  messages.appendChild(div);
+  removeEmpty();
+
+  const row = document.createElement("div");
+  row.className = `msg ${type}`;
+
+  const avatar = document.createElement("div");
+  avatar.className = "avatar";
+  avatar.innerText = type === "user" ? "S" : "A";
+
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  bubble.innerText = text;
+
+  row.appendChild(avatar);
+  row.appendChild(bubble);
+  messages.appendChild(row);
+
   messages.scrollTop = messages.scrollHeight;
-  return div;
+  return bubble;
+}
+
+function newChat() {
+  history = [];
+  selectedFile = null;
+  fileInput.value = "";
+  filePreview.classList.remove("active");
+  messages.innerHTML = `
+    <div class="empty">
+      <img src="/cover.jpg" alt="Aliv" />
+      <h2>Bugün ne üretelim?</h2>
+      <p>Bir görsel yükle, fikir anlat veya doğrudan yaz.</p>
+    </div>
+  `;
 }
 
 fileBtn.onclick = () => fileInput.click();
@@ -32,13 +65,12 @@ input.addEventListener("input", () => {
   input.style.height = input.scrollHeight + "px";
 });
 
-async function fileToBase64(file) {
+function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
     reader.onload = () => {
-      const base64 = reader.result.split(",")[1];
-      resolve(base64);
+      resolve(reader.result.split(",")[1]);
     };
 
     reader.onerror = reject;
@@ -53,7 +85,7 @@ btn.onclick = async () => {
 
   addMessage(text || "Dosya gönderildi.", "user");
 
-  const thinking = addMessage("Düşünüyor...", "bot");
+  const thinking = addMessage("Düşünüyorum...", "bot");
 
   input.value = "";
   input.style.height = "auto";
@@ -76,16 +108,25 @@ btn.onclick = async () => {
       },
       body: JSON.stringify({
         message: text,
-        file: fileData
+        file: fileData,
+        history
       })
     });
 
     const data = await res.json();
 
-    thinking.innerText =
-      data.reply ||
-      data.error ||
-      "Cevap alınamadı.";
+    const reply = data.reply || data.error || "Cevap alınamadı.";
+    thinking.innerText = reply;
+
+    history.push({
+      role: "user",
+      text: text || `[Dosya: ${selectedFile?.name}]`
+    });
+
+    history.push({
+      role: "model",
+      text: reply
+    });
 
   } catch (err) {
     thinking.innerText = "Hata: " + err.message;
