@@ -17,7 +17,7 @@ export default async function handler(req, res) {
           "Authorization": `Bearer ${process.env.OPENCODE_API_KEY}`
         },
         body: JSON.stringify({
-          model: "minimax-m2.5-free",
+          model: "gpt-5.5",
           messages: [
             {
               role: "user",
