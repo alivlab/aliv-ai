@@ -6,13 +6,12 @@ btn.onclick = async () => {
   const text = input.value.trim();
   if (!text) return;
 
-messages.innerText +=
-  "\nDEBUG: " +
-  JSON.stringify(data, null, 2) +
-  "\n";
+  messages.innerText += "\nSen: " + text + "\n";
+  messages.innerText += "\nAliv düşünüyor...\n";
+  input.value = "";
 
   try {
-    const res = await fetch("api/chat", {
+    const res = await fetch("/api/chat", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -22,7 +21,8 @@ messages.innerText +=
 
     const data = await res.json();
 
-    messages.innerText += "\nAliv: " + (data.reply || data.error || "Boş cevap geldi") + "\n";
+    messages.innerText +=
+      "\nDEBUG:\n" + JSON.stringify(data, null, 2) + "\n";
 
   } catch (err) {
     messages.innerText += "\nHata: " + err.message + "\n";
