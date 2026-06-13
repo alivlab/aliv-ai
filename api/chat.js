@@ -1,56 +1,44 @@
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({
-      error: "Method not allowed"
-    });
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
   try {
     const { message } = req.body;
 
     const response = await fetch(
-      "https://opencode.ai/zen/v1/chat/completions",
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${process.env.OPENCODE_API_KEY}`
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          model: "gpt-5.5",
-          messages: [
+          contents: [
             {
-              role: "user",
-              content: message
+              parts: [
+                {
+                  text: message
+                }
+              ]
             }
           ]
         })
       }
     );
 
-    const text = await response.text();
-
-    let data;
-
-    try {
-      data = JSON.parse(text);
-    } catch {
-      return res.status(500).json({
-        error: "JSON parse hatası",
-        raw: text
-      });
-    }
+    const data = await response.json();
 
     if (!response.ok) {
       return res.status(500).json({
-        error: data
+        error: data.error?.message || JSON.stringify(data)
       });
     }
 
     return res.status(200).json({
       reply:
-        data.choices?.[0]?.message?.content ||
-        JSON.stringify(data)
+        data.candidates?.[0]?.content?.parts?.[0]?.text ||
+        "Cevap alınamadı."
     });
 
   } catch (err) {
