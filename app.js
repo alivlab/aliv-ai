@@ -8,16 +8,22 @@ btn.onclick = async () => {
 
   messages.innerText += "\nSen: " + text + "\n";
   input.value = "";
+  messages.innerText += "\nAliv düşünüyor...\n";
 
-  const res = await fetch("/chat", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ message: text })
-  });
+  try {
+    const res = await fetch("/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ message: text })
+    });
 
-  const data = await res.json();
+    const data = await res.json();
 
-  messages.innerText += "\nAliv: " + (data.reply || data.error) + "\n";
+    messages.innerText += "\nAliv: " + (data.reply || data.error || "Boş cevap geldi") + "\n";
+
+  } catch (err) {
+    messages.innerText += "\nHata: " + err.message + "\n";
+  }
 };
