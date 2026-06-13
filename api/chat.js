@@ -4,7 +4,32 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { message } = req.body;
+    const { message, file } = req.body;
+
+    const parts = [];
+
+    if (message) {
+      parts.push({ text: message });
+    }
+
+    if (file && file.data && file.type && file.type.startsWith("image/")) {
+      parts.push({
+        inlineData: {
+          mimeType: file.type,
+          data: file.data
+        }
+      });
+    }
+
+    if (file && file.type && !file.type.startsWith("image/")) {
+      parts.push({
+        text: `Kullanıcı "${file.name}" adlı bir dosya yükledi. Şu an yalnızca görseller doğrudan analiz edilebilir.`
+      });
+    }
+
+    if (parts.length === 0) {
+      return res.status(400).json({ error: "Mesaj veya dosya gönderilmedi." });
+    }
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
@@ -16,11 +41,7 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           contents: [
             {
-              parts: [
-                {
-                  text: message
-                }
-              ]
+              parts
             }
           ]
         })
