@@ -22,7 +22,9 @@ btn.onclick = async () => {
     const data = await res.json();
 
     messages.innerText +=
-      "\nDEBUG:\n" + JSON.stringify(data, null, 2) + "\n";
+      "\nAliv: " +
+      (data.reply || data.error || "Cevap alınamadı") +
+      "\n";
 
   } catch (err) {
     messages.innerText += "\nHata: " + err.message + "\n";
