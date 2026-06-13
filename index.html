@@ -7,26 +7,42 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="bg"></div>
+  <div class="ambient"></div>
 
-  <main class="app">
-    <section class="hero">
-      <div class="badge">AI assistant</div>
-      <h1>Fikrini yaz.<br>Gerisini birlikte çözelim.</h1>
-      <p>Günlük sorular, matematik, kod, metin ve fikir üretimi için sade ama güçlü bir sohbet alanı.</p>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo">A</div>
+        <span>Aliv</span>
+      </div>
+      <div class="status">● aktif</div>
+    </header>
+
+    <section class="intro">
+      <p class="eyebrow">AI çalışma alanı</p>
+      <h1>Ne üretmek istiyorsun?</h1>
+      <p class="sub">Soru sor, metin yazdır, kod üret, dosya yükle veya fikrini geliştir.</p>
     </section>
 
-    <section class="chat-card">
+    <section class="chat">
       <div id="messages" class="messages">
-        <div class="welcome">
-          <span>✦</span>
-          <p>Merhaba. Bana bir soru sor, fikir ver ya da bir şey üretmemi iste.</p>
+        <div class="hint">
+          <b>Başlamak için yaz:</b>
+          “Bana sade bir portfolyo sitesi hazırla”
         </div>
       </div>
 
+      <div id="filePreview" class="file-preview"></div>
+
       <div class="composer">
-        <textarea id="message" placeholder="Bir şey yaz..."></textarea>
-        <button id="sendBtn">Gönder</button>
+        <button class="icon-btn" id="fileBtn" title="Dosya ekle">＋</button>
+        <input id="fileInput" type="file" hidden accept="image/*,.txt,.pdf,.doc,.docx" />
+
+        <textarea id="message" placeholder="Mesaj yaz..." rows="1"></textarea>
+
+        <button class="send-btn" id="sendBtn" title="Gönder">
+          ➤
+        </button>
       </div>
     </section>
   </main>
