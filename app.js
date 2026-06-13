@@ -6,9 +6,10 @@ btn.onclick = async () => {
   const text = input.value.trim();
   if (!text) return;
 
-  messages.innerText += "\nSen: " + text + "\n";
-  input.value = "";
-  messages.innerText += "\nAliv düşünüyor...\n";
+messages.innerText +=
+  "\nDEBUG: " +
+  JSON.stringify(data, null, 2) +
+  "\n";
 
   try {
     const res = await fetch("api/chat", {
