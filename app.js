@@ -2,13 +2,23 @@ const btn = document.getElementById("sendBtn");
 const input = document.getElementById("message");
 const messages = document.getElementById("messages");
 
+function addMessage(text, type) {
+  const div = document.createElement("div");
+  div.className = type;
+  div.innerText = text;
+  messages.appendChild(div);
+  messages.scrollTop = messages.scrollHeight;
+  return div;
+}
+
 btn.onclick = async () => {
   const text = input.value.trim();
   if (!text) return;
 
-  messages.innerText += "\nSen: " + text + "\n";
-  messages.innerText += "\nAliv düşünüyor...\n";
+  addMessage("Sen: " + text, "user");
   input.value = "";
+
+  const thinking = addMessage("Düşünüyor...", "bot");
 
   try {
     const res = await fetch("/api/chat", {
@@ -21,12 +31,19 @@ btn.onclick = async () => {
 
     const data = await res.json();
 
-    messages.innerText +=
-      "\nAliv: " +
-      (data.reply || data.error || "Cevap alınamadı") +
-      "\n";
+    thinking.innerText =
+      data.reply ||
+      data.error ||
+      "Cevap alınamadı.";
 
   } catch (err) {
-    messages.innerText += "\nHata: " + err.message + "\n";
+    thinking.innerText = "Hata: " + err.message;
   }
 };
+
+input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    btn.click();
+  }
+});
