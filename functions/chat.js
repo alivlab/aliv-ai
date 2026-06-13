@@ -3,16 +3,14 @@ export async function onRequestPost(context) {
     const { request, env } = context;
     const body = await request.json();
 
-    const response = await fetch("https://opencode.ai/zen/v1/messages", {
+    const response = await fetch("https://opencode.ai/zen/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": env.OPENCODE_API_KEY,
-        "anthropic-version": "2023-06-01"
+        "Authorization": `Bearer ${env.OPENCODE_API_KEY}`
       },
       body: JSON.stringify({
         model: "minimax-m2.5-free",
-        max_tokens: 1000,
         messages: [
           {
             role: "user",
@@ -22,7 +20,16 @@ export async function onRequestPost(context) {
       })
     });
 
-    const data = await response.json();
+    const text = await response.text();
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      return Response.json({
+        error: "JSON olmayan cevap geldi: " + text
+      }, { status: 500 });
+    }
 
     if (!response.ok) {
       return Response.json({
@@ -31,7 +38,7 @@ export async function onRequestPost(context) {
     }
 
     return Response.json({
-      reply: data.content?.[0]?.text || JSON.stringify(data)
+      reply: data.choices?.[0]?.message?.content || JSON.stringify(data)
     });
 
   } catch (err) {
