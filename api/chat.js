@@ -4,16 +4,36 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { message, file } = req.body;
+    const { message, file, history = [] } = req.body;
 
-    const parts = [];
+    const systemInstruction = `
+Sen Aliv adlı modern bir yapay zeka asistanısın.
+Cevapların kısa, net, doğal ve kaliteli olsun.
+Görsel gönderildiyse gerçekten görseli incele ve detaylı ama düzenli analiz yap.
+Kullanıcı logo, tasarım veya görsel üretmeni isterse:
+- Doğrudan görsel üretemediğini açıkça söyle.
+- Ama kullanabileceği net prompt, SVG, HTML/CSS veya tasarım tarifi üret.
+Bir önceki konuşmaları dikkate al.
+Terminal gibi kuru konuşma. Profesyonel ama samimi cevap ver.
+`;
+
+    const contents = [];
+
+    for (const item of history.slice(-12)) {
+      contents.push({
+        role: item.role === "model" ? "model" : "user",
+        parts: [{ text: item.text }]
+      });
+    }
+
+    const currentParts = [];
 
     if (message) {
-      parts.push({ text: message });
+      currentParts.push({ text: message });
     }
 
     if (file && file.data && file.type && file.type.startsWith("image/")) {
-      parts.push({
+      currentParts.push({
         inlineData: {
           mimeType: file.type,
           data: file.data
@@ -22,14 +42,15 @@ export default async function handler(req, res) {
     }
 
     if (file && file.type && !file.type.startsWith("image/")) {
-      parts.push({
+      currentParts.push({
         text: `Kullanıcı "${file.name}" adlı bir dosya yükledi. Şu an yalnızca görseller doğrudan analiz edilebilir.`
       });
     }
 
-    if (parts.length === 0) {
-      return res.status(400).json({ error: "Mesaj veya dosya gönderilmedi." });
-    }
+    contents.push({
+      role: "user",
+      parts: currentParts
+    });
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
@@ -39,11 +60,10 @@ export default async function handler(req, res) {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          contents: [
-            {
-              parts
-            }
-          ]
+          systemInstruction: {
+            parts: [{ text: systemInstruction }]
+          },
+          contents
         })
       }
     );
