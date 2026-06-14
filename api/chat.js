@@ -19,20 +19,20 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { token, model, messages } = req.body || {};
-
-  const username = verifyToken(token);
-  if (!username) {
-    return res.status(401).json({ error: 'Oturum süresi doldu. Lütfen tekrar giriş yapın.' });
-  }
-
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return res.status(400).json({ error: 'Mesaj bulunamadı.' });
-  }
-
-  const config = MODELS[model] || MODELS[DEFAULT_MODEL];
-
   try {
+    const { token, model, messages } = req.body || {};
+
+    const username = verifyToken(token);
+    if (!username) {
+      return res.status(401).json({ error: 'Oturum süresi doldu. Lütfen tekrar giriş yapın.' });
+    }
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: 'Mesaj bulunamadı.' });
+    }
+
+    const config = MODELS[model] || MODELS[DEFAULT_MODEL];
+
     let reply;
     if (config.provider === 'gemini') {
       reply = await callGemini(config.model, messages);
@@ -56,10 +56,10 @@ export default async function handler(req, res) {
       );
     }
 
-    res.status(200).json({ reply });
+    return res.status(200).json({ reply });
   } catch (err) {
     console.error('Chat error:', err);
-    res.status(502).json({ error: 'Yapay zeka servisine ulaşılamadı. Lütfen tekrar deneyin veya farklı bir model seçin.' });
+    return res.status(502).json({ error: 'Yapay zeka servisine ulaşılamadı: ' + (err.message || 'bilinmeyen hata') });
   }
 }
 
