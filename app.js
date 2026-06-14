@@ -2,14 +2,12 @@
 // ALIV AI — frontend logic
 // ============================================================
 
-const AUTH_VIEW = document.getElementById('auth-view');
-const CHAT_VIEW = document.getElementById('chat-view');
-
 const TOKEN_KEY = 'aliv_token';
 const USER_KEY = 'aliv_username';
-const MODEL_KEY = 'aliv_model';
-
 const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
+
+const AUTH_VIEW = document.getElementById('auth-view');
+const CHAT_VIEW = document.getElementById('chat-view');
 
 // ------------------------------------------------------------
 // Helpers
@@ -93,10 +91,107 @@ function readFileAsDataUrl(file) {
 }
 
 // ============================================================
+// INTRO ANIMATION
+// ============================================================
+function buildLogoIntro() {
+  const overlay = document.getElementById('logo-intro');
+  const container = document.getElementById('intro-tiles');
+  if (!overlay || !container) return;
+
+  const cols = 6;
+  const rows = 6;
+  const tileSize = window.innerWidth < 480 ? 18 : 24;
+
+  container.style.width = `${cols * tileSize}px`;
+  container.style.height = `${rows * tileSize}px`;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const tile = document.createElement('div');
+      tile.className = 'intro-tile';
+      tile.style.left = `${c * tileSize}px`;
+      tile.style.top = `${r * tileSize}px`;
+      tile.style.width = `${tileSize}px`;
+      tile.style.height = `${tileSize}px`;
+      tile.style.backgroundPosition = `${-c * tileSize}px ${-r * tileSize}px`;
+      tile.style.backgroundSize = `${cols * tileSize}px ${rows * tileSize}px`;
+
+      const dx = (Math.random() - 0.5) * 360;
+      const dy = (Math.random() - 0.5) * 360;
+      const rot = (Math.random() - 0.5) * 240;
+
+      tile.style.setProperty('--dx', `${dx}px`);
+      tile.style.setProperty('--dy', `${dy}px`);
+      tile.style.setProperty('--rot', `${rot}deg`);
+      tile.style.transitionDelay = `${Math.random() * 0.35}s`;
+
+      container.appendChild(tile);
+    }
+  }
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => container.classList.add('assembled'));
+  });
+
+  setTimeout(() => overlay.classList.add('done'), 1700);
+}
+
+// ============================================================
+// INFO MODAL + MODEL BADGES
+// ============================================================
+const infoModal = document.getElementById('info-modal');
+const infoModalClose = document.getElementById('info-modal-close');
+const infoModalBackdrop = document.getElementById('info-modal-backdrop');
+const infoBtn = document.getElementById('info-btn');
+const infoLinkAuth = document.getElementById('info-link-auth');
+
+function openInfoModal() {
+  infoModal.classList.remove('hidden');
+}
+function closeInfoModal() {
+  infoModal.classList.add('hidden');
+}
+
+infoBtn?.addEventListener('click', openInfoModal);
+infoLinkAuth?.addEventListener('click', openInfoModal);
+infoModalClose.addEventListener('click', closeInfoModal);
+infoModalBackdrop.addEventListener('click', closeInfoModal);
+
+let modelsCache = null;
+
+async function loadModels() {
+  if (modelsCache) return modelsCache;
+  try {
+    const res = await fetch('/api/models');
+    modelsCache = await res.json();
+  } catch {
+    modelsCache = { models: [], image: null };
+  }
+  renderBadges(document.getElementById('model-badges'), modelsCache);
+  renderBadges(document.getElementById('info-model-badges'), modelsCache);
+  return modelsCache;
+}
+
+function renderBadges(container, data) {
+  if (!container) return;
+  container.innerHTML = '';
+  (data.models || []).forEach((m) => {
+    const badge = document.createElement('span');
+    badge.className = 'model-badge';
+    badge.innerHTML = `<span class="dot"></span>${m.label}`;
+    container.appendChild(badge);
+  });
+  if (data.image) {
+    const badge = document.createElement('span');
+    badge.className = 'model-badge image-badge';
+    badge.innerHTML = `<span class="dot"></span>${data.image.label}`;
+    container.appendChild(badge);
+  }
+}
+
+// ============================================================
 // AUTH VIEW
 // ============================================================
-
-// ---- tabs ----
 const tabs = document.querySelectorAll('.auth-tabs .tab');
 const loginForm = document.getElementById('login-form');
 const registerForm = document.getElementById('register-form');
@@ -243,10 +338,10 @@ const emptyState = document.getElementById('empty-state');
 const chatForm = document.getElementById('chat-form');
 const chatInput = document.getElementById('chat-input');
 const sendBtn = document.getElementById('send-btn');
-const modelSelect = document.getElementById('model-select');
 const newChatBtn = document.getElementById('new-chat-btn');
 const logoutBtn = document.getElementById('logout-btn');
 const chatBrandMark = document.getElementById('chat-brand-mark');
+const modeButtons = document.querySelectorAll('.mode-btn');
 
 const fileInput = document.getElementById('file-input');
 const attachBtn = document.getElementById('attach-btn');
@@ -258,46 +353,48 @@ const attachmentRemove = document.getElementById('attachment-remove');
 
 let history = []; // { role: 'user' | 'assistant', content: string }
 let attachedFile = null; // { name, mimeType, base64, previewDataUrl }
+let currentMode = 'chat'; // 'chat' | 'image'
 
 const SYSTEM_PROMPT = {
   role: 'system',
   content: 'Sen ALIV AI adlı, kullanıcılara yardımcı olan bir Türkçe yapay zeka asistanısın. Açık, kısa ve net cevaplar ver. Bir dosya (PDF, görsel veya metin) eklendiyse içeriğini analiz ederek kullanıcının isteğine göre yanıt ver (örneğin özetle, açıkla veya sorularını cevapla).',
 };
 
-const PLACEHOLDERS = {
-  default: 'Bir mesaj yazın...',
-  'image-gen': 'Oluşturmak istediğiniz görseli tanımlayın... (örn: dağ manzarası, gün batımı)',
-  'image-edit': 'Bir görsel ekleyin ve ne yapılmasını istediğinizi yazın (örn: arka plandaki insanları sil)',
-};
-
 function enterChat() {
   showView('chat');
-
-  const savedModel = localStorage.getItem(MODEL_KEY);
-  if (savedModel && modelSelect.querySelector(`option[value="${savedModel}"]`)) {
-    modelSelect.value = savedModel;
-  }
-
-  updateModeUI();
+  loadModels();
+  updatePlaceholder();
   chatInput.focus();
 }
 
-function updateModeUI() {
-  const mode = modelSelect.value;
-  chatInput.placeholder = PLACEHOLDERS[mode] || PLACEHOLDERS.default;
+// ---- mode toggle ----
+modeButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    if (btn.classList.contains('active')) return;
 
-  if (mode === 'image-gen') {
-    clearAttachment();
-    attachBtn.classList.add('hidden');
+    modeButtons.forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentMode = btn.dataset.mode;
+
+    if (currentMode === 'image' && attachedFile && !attachedFile.mimeType.startsWith('image/')) {
+      clearAttachment();
+    }
+
+    updatePlaceholder();
+  });
+});
+
+function updatePlaceholder() {
+  if (currentMode === 'image') {
+    chatInput.placeholder = attachedFile
+      ? 'Bu görselde ne yapılmasını istiyorsunuz? (örn: arka plandaki insanları sil)'
+      : 'Oluşturmak istediğiniz görseli tanımlayın... (örn: dağ manzarası, gün batımı)';
   } else {
-    attachBtn.classList.remove('hidden');
+    chatInput.placeholder = attachedFile
+      ? 'Eklediğiniz dosya hakkında bir soru sorun veya özet isteyin...'
+      : 'Bir mesaj yazın...';
   }
 }
-
-modelSelect.addEventListener('change', () => {
-  localStorage.setItem(MODEL_KEY, modelSelect.value);
-  updateModeUI();
-});
 
 // ---- attachments ----
 attachBtn.addEventListener('click', () => fileInput.click());
@@ -309,6 +406,11 @@ fileInput.addEventListener('change', async () => {
 
   if (file.size > MAX_FILE_SIZE) {
     addMessage('error', 'Dosya çok büyük. En fazla 4MB destekleniyor.');
+    return;
+  }
+
+  if (currentMode === 'image' && !file.type.startsWith('image/')) {
+    addMessage('error', 'Görsel modunda sadece resim dosyası ekleyebilirsiniz.');
     return;
   }
 
@@ -335,6 +437,7 @@ fileInput.addEventListener('change', async () => {
     }
     attachmentPreview.classList.remove('hidden');
     attachBtn.classList.add('active');
+    updatePlaceholder();
   } catch {
     addMessage('error', 'Dosya okunamadı, lütfen tekrar deneyin.');
   }
@@ -346,6 +449,7 @@ function clearAttachment() {
   attachedFile = null;
   attachmentPreview.classList.add('hidden');
   attachBtn.classList.remove('active');
+  updatePlaceholder();
 }
 
 // ---- input box ----
@@ -473,10 +577,8 @@ async function sendChatMessage(text) {
   const typingBubble = addTypingBubble();
 
   try {
-    const model = modelSelect.value;
     const payload = {
       token: getToken(),
-      model,
       messages: [SYSTEM_PROMPT, ...history.slice(-20)],
     };
 
@@ -488,7 +590,7 @@ async function sendChatMessage(text) {
     history.push({ role: 'assistant', content: data.reply });
 
     typingBubble.remove();
-    addMessage('assistant', data.reply, { modelLabel: modelSelect.options[modelSelect.selectedIndex].text });
+    addMessage('assistant', data.reply, { modelLabel: data.model });
   } catch (err) {
     typingBubble.remove();
     addMessage('error', err.message);
@@ -503,52 +605,28 @@ async function sendChatMessage(text) {
   }
 }
 
-async function generateImage(prompt) {
-  addMessage('user', prompt);
-  chatBrandMark.classList.add('thinking');
-  const typingBubble = addTypingBubble();
+async function sendImageMessage(prompt) {
+  const isEdit = !!attachedFile;
+  const attachmentForMessage = isEdit
+    ? { name: attachedFile.name, mimeType: attachedFile.mimeType, previewDataUrl: attachedFile.previewDataUrl }
+    : null;
 
-  try {
-    const seed = Math.floor(Math.random() * 1e9);
-    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true&seed=${seed}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('Görsel oluşturulamadı, lütfen tekrar deneyin.');
-
-    const blob = await res.blob();
-    const objUrl = URL.createObjectURL(blob);
-
-    typingBubble.remove();
-    addImageMessage(prompt, objUrl, 'aliv-gorsel.png');
-  } catch (err) {
-    typingBubble.remove();
-    addMessage('error', err.message);
-  } finally {
-    chatBrandMark.classList.remove('thinking');
-  }
-}
-
-async function editImage(prompt) {
-  if (!attachedFile || !attachedFile.mimeType.startsWith('image/')) {
-    addMessage('error', 'Lütfen önce düzenlemek istediğiniz görseli ekleyin.');
-    return;
-  }
-
-  const attachmentForMessage = { name: attachedFile.name, mimeType: attachedFile.mimeType, previewDataUrl: attachedFile.previewDataUrl };
   addMessage('user', prompt, { attachment: attachmentForMessage });
 
   chatBrandMark.classList.add('thinking');
   const typingBubble = addTypingBubble();
 
   try {
-    const data = await postJSON('/api/image-edit', {
-      token: getToken(),
-      prompt,
-      image: { mimeType: attachedFile.mimeType, data: attachedFile.base64 },
-    });
+    const payload = { token: getToken(), prompt };
+    if (isEdit) {
+      payload.image = { mimeType: attachedFile.mimeType, data: attachedFile.base64 };
+    }
+
+    const data = await postJSON('/api/image', payload);
 
     typingBubble.remove();
     const src = `data:${data.image.mimeType};base64,${data.image.data}`;
-    addImageMessage(data.text || '', src, 'aliv-duzenlenmis.png');
+    addImageMessage(data.text || '', src, isEdit ? 'aliv-duzenlenmis.png' : 'aliv-gorsel.png');
   } catch (err) {
     typingBubble.remove();
     addMessage('error', err.message);
@@ -573,12 +651,8 @@ chatForm.addEventListener('submit', async (e) => {
   autoResize();
   sendBtn.disabled = true;
 
-  const mode = modelSelect.value;
-
-  if (mode === 'image-gen') {
-    await generateImage(text);
-  } else if (mode === 'image-edit') {
-    await editImage(text);
+  if (currentMode === 'image') {
+    await sendImageMessage(text);
   } else {
     await sendChatMessage(text);
   }
@@ -604,6 +678,8 @@ logoutBtn.addEventListener('click', () => {
 // INIT
 // ============================================================
 (function init() {
+  buildLogoIntro();
+
   if (getToken()) {
     enterChat();
   } else {

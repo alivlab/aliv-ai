@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>ALIV AI</title>
-  <meta name="description" content="ALIV AI — ücretsiz yapay zeka modelleriyle sohbet edin." />
+  <meta name="description" content="ALIV AI — birden fazla ücretsiz yapay zeka modelinin otomatik harmanlanmasıyla çalışan, kâr amacı gütmeyen sohbet platformu." />
   <link rel="icon" type="image/png" href="assets/icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -12,6 +12,11 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+
+  <!-- ================= INTRO ANIMATION ================= -->
+  <div id="logo-intro" class="logo-intro" aria-hidden="true">
+    <div class="intro-tiles" id="intro-tiles"></div>
+  </div>
 
   <!-- ================= AUTH VIEW ================= -->
   <main id="auth-view" class="view">
@@ -86,6 +91,11 @@
       </form>
 
     </div>
+
+    <footer class="site-footer">
+      <button type="button" class="info-link" id="info-link-auth">Hakkında ve aktif modeller</button>
+      <p class="copyright">© 2026 ALIV — Tüm hakları saklıdır.</p>
+    </footer>
   </main>
 
   <!-- ================= CHAT VIEW ================= -->
@@ -96,29 +106,21 @@
         <span class="brand-word">ALIV</span>
       </div>
 
-      <div class="model-select-wrap">
-        <select id="model-select" aria-label="Model seç">
-          <optgroup label="Google Gemini">
-            <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
-            <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-          </optgroup>
-          <optgroup label="Groq">
-            <option value="groq-llama-70b">Llama 3.3 70B</option>
-            <option value="groq-llama-8b">Llama 3.1 8B (hızlı)</option>
-          </optgroup>
-          <optgroup label="OpenRouter">
-            <option value="or-llama-8b">Llama 3.1 8B</option>
-            <option value="or-gemma-9b">Gemma 2 9B</option>
-            <option value="or-mistral-7b">Mistral 7B</option>
-          </optgroup>
-          <optgroup label="Görsel">
-            <option value="image-gen">Görsel Oluştur</option>
-            <option value="image-edit">Görsel Düzenle · deneysel</option>
-          </optgroup>
-        </select>
+      <div class="mode-toggle" role="tablist">
+        <button class="mode-btn active" data-mode="chat" type="button" title="Sohbet">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+          <span>Sohbet</span>
+        </button>
+        <button class="mode-btn" data-mode="image" type="button" title="Görsel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+          <span>Görsel</span>
+        </button>
       </div>
 
       <div class="header-actions">
+        <button id="info-btn" class="icon-btn" title="Hakkında ve aktif modeller" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        </button>
         <button id="new-chat-btn" class="icon-btn" title="Yeni sohbet" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
         </button>
@@ -132,7 +134,8 @@
       <div class="empty-state" id="empty-state">
         <img src="assets/icon.png" alt="" class="brand-mark empty-mark" />
         <h1>Bugün nasıl yardımcı olabilirim?</h1>
-        <p>Yukarıdan bir model seçin ve yazmaya başlayın.</p>
+        <p>Mesajınızı yazın — en uygun yapay zeka modeli otomatik olarak seçilir.</p>
+        <div class="model-badges" id="model-badges"></div>
       </div>
     </section>
 
@@ -154,6 +157,31 @@
       </button>
     </form>
   </main>
+
+  <!-- ================= INFO MODAL ================= -->
+  <div id="info-modal" class="modal hidden">
+    <div class="modal-backdrop" id="info-modal-backdrop"></div>
+    <div class="modal-card">
+      <button class="modal-close" id="info-modal-close" aria-label="Kapat" type="button">×</button>
+
+      <div class="brand brand-sm">
+        <img src="assets/icon.png" alt="ALIV" class="brand-mark" />
+        <span class="brand-word">ALIV</span>
+      </div>
+
+      <p class="about-text">
+        Bu sayfa, herhangi bir kâr amacı gütmeden; son kullanıcıya, her bir yapay zeka için
+        ayrı bir uygulama veya hesap gerektirmeden, entegre ücretsiz yapay zeka modellerinin
+        harmanlanmasıyla tamamen ücretsiz olarak sunulmuştur.
+      </p>
+
+      <h3 class="modal-subtitle">Aktif modeller</h3>
+      <div class="model-badges" id="info-model-badges"></div>
+      <p class="modal-note">En uygun model her mesaj için otomatik seçilir; bir model yanıt veremezse sistem diğerine geçer.</p>
+
+      <p class="copyright">© 2026 ALIV — Tüm hakları saklıdır.</p>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>

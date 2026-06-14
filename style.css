@@ -113,11 +113,14 @@ a { color: var(--gold-bright); }
    ========================================================= */
 #auth-view {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 24px;
   padding: 24px;
   background:
-    radial-gradient(ellipse at 50% -10%, rgba(199, 154, 75, 0.10), transparent 55%),
+    radial-gradient(ellipse at 50% -10%, rgba(199, 154, 75, 0.12), transparent 55%),
+    radial-gradient(ellipse at 85% 105%, rgba(199, 154, 75, 0.07), transparent 50%),
     var(--bg);
 }
 
@@ -126,6 +129,7 @@ a { color: var(--gold-bright); }
   max-width: 400px;
   background: var(--bg-card);
   border: 1px solid var(--border-soft);
+  border-top: 1px solid rgba(199, 154, 75, 0.3);
   border-radius: var(--radius-lg);
   padding: 36px 28px;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
@@ -219,7 +223,7 @@ a { color: var(--gold-bright); }
 }
 
 .primary-btn {
-  background: var(--gold);
+  background: linear-gradient(135deg, var(--gold-bright), var(--gold));
   color: #1a1306;
   border: none;
   border-radius: var(--radius-sm);
@@ -227,10 +231,11 @@ a { color: var(--gold-bright); }
   font-size: 15px;
   font-weight: 600;
   letter-spacing: 0.01em;
-  transition: background 0.2s ease, transform 0.15s ease;
+  box-shadow: 0 8px 20px rgba(199, 154, 75, 0.18);
+  transition: filter 0.2s ease, transform 0.15s ease;
 }
 
-.primary-btn:hover { background: var(--gold-bright); }
+.primary-btn:hover { filter: brightness(1.08); }
 .primary-btn:active { transform: scale(0.98); }
 
 /* --- login OTP reveal animation --- */
@@ -353,20 +358,51 @@ a { color: var(--gold-bright); }
   gap: 12px;
   padding: 12px 16px;
   border-bottom: 1px solid var(--border-soft);
-  background: var(--bg-card);
+  background: rgba(15, 15, 18, 0.85);
+  backdrop-filter: blur(12px);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .brand-sm { margin: 0; gap: 8px; }
 .brand-sm .brand-mark { width: 32px; height: 32px; }
 .brand-sm .brand-word { font-size: 16px; letter-spacing: 0.32em; }
 
-.model-select-wrap select {
+.mode-toggle {
+  display: flex;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  padding: 4px;
+  gap: 4px;
+}
+
+.mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
   font-size: 13px;
-  max-width: 46vw;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  transition: background 0.25s ease, color 0.25s ease;
+}
+
+.mode-btn svg { width: 16px; height: 16px; }
+
+.mode-btn.active {
+  background: var(--gold);
+  color: #1a1306;
+}
+
+.mode-btn span { display: none; }
+
+@media (min-width: 480px) {
+  .mode-btn span { display: inline; }
 }
 
 .header-actions {
@@ -510,7 +546,8 @@ a { color: var(--gold-bright); }
   gap: 10px;
   padding: 12px 16px;
   border-top: 1px solid var(--border-soft);
-  background: var(--bg-card);
+  background: rgba(15, 15, 18, 0.85);
+  backdrop-filter: blur(12px);
   padding-bottom: max(12px, env(safe-area-inset-bottom));
 }
 
@@ -539,16 +576,17 @@ a { color: var(--gold-bright); }
   height: 44px;
   border-radius: var(--radius-md);
   border: none;
-  background: var(--gold);
+  background: linear-gradient(135deg, var(--gold-bright), var(--gold));
   color: #1a1306;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.2s ease, transform 0.15s ease, opacity 0.2s ease;
+  box-shadow: 0 6px 16px rgba(199, 154, 75, 0.18);
+  transition: filter 0.2s ease, transform 0.15s ease, opacity 0.2s ease;
 }
 
 .send-btn svg { width: 19px; height: 19px; }
-.send-btn:hover { background: var(--gold-bright); }
+.send-btn:hover { filter: brightness(1.08); }
 .send-btn:active { transform: scale(0.94); }
 .send-btn:disabled { opacity: 0.5; cursor: default; }
 
@@ -708,3 +746,211 @@ a { color: var(--gold-bright); }
 }
 
 .download-link:hover { background: var(--gold-bright); }
+
+/* =========================================================
+   Intro animation (logo assembling on page load)
+   ========================================================= */
+.logo-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  transition: opacity 0.6s ease;
+}
+
+.logo-intro.done {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.intro-tiles {
+  position: relative;
+}
+
+.intro-tile {
+  position: absolute;
+  background-image: url('assets/icon.png');
+  background-repeat: no-repeat;
+  opacity: 0;
+  transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(0.5);
+  transition: transform 0.95s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.6s ease;
+}
+
+.intro-tiles.assembled .intro-tile {
+  opacity: 1;
+  transform: translate(0, 0) rotate(0deg) scale(1);
+}
+
+.intro-tiles.assembled {
+  animation: intro-glow 1s ease 0.9s;
+}
+
+@keyframes intro-glow {
+  0%, 100% { filter: drop-shadow(0 0 0 rgba(199, 154, 75, 0)); }
+  50% { filter: drop-shadow(0 0 26px rgba(199, 154, 75, 0.65)); }
+}
+
+/* =========================================================
+   Footer
+   ========================================================= */
+.site-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.info-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-decoration: underline;
+  text-decoration-color: var(--border);
+  text-underline-offset: 3px;
+  transition: color 0.2s ease;
+}
+
+.info-link:hover { color: var(--gold-bright); }
+
+.copyright { margin: 0; }
+
+/* =========================================================
+   Model badges
+   ========================================================= */
+.model-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+  max-width: 440px;
+}
+
+.model-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.model-badge .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gold);
+  flex-shrink: 0;
+}
+
+.model-badge.image-badge {
+  border-color: rgba(199, 154, 75, 0.35);
+  color: var(--gold-bright);
+}
+
+/* =========================================================
+   Info modal
+   ========================================================= */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.modal.hidden { display: none; }
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+}
+
+.modal-card {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  max-height: 85vh;
+  overflow-y: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-top: 1px solid rgba(199, 154, 75, 0.3);
+  border-radius: var(--radius-lg);
+  padding: 32px 24px 24px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  animation: card-rise 0.35s ease;
+}
+
+.modal-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.modal-close:hover {
+  color: var(--gold-bright);
+  border-color: var(--gold);
+}
+
+.about-text {
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.65;
+  text-align: center;
+  margin: 4px 0 22px;
+}
+
+.modal-subtitle {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  margin: 0 0 12px;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.modal-note {
+  font-size: 12px;
+  color: var(--text-faint);
+  text-align: center;
+  margin: 14px 0 22px;
+  line-height: 1.5;
+}
+
+.modal-card .copyright {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-faint);
+  border-top: 1px solid var(--border-soft);
+  padding-top: 16px;
+}
