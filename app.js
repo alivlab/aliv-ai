@@ -9,6 +9,8 @@ const TOKEN_KEY = 'aliv_token';
 const USER_KEY = 'aliv_username';
 const MODEL_KEY = 'aliv_model';
 
+const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
+
 // ------------------------------------------------------------
 // Helpers
 // ------------------------------------------------------------
@@ -42,6 +44,52 @@ async function postJSON(url, body) {
 function showView(view) {
   AUTH_VIEW.classList.toggle('hidden', view !== 'auth');
   CHAT_VIEW.classList.toggle('hidden', view !== 'chat');
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function downloadText(filename, text) {
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function printAsPdf(text) {
+  const win = window.open('', '_blank');
+  if (!win) {
+    alert('Pop-up penceresi engellendi. Lütfen tarayıcı ayarlarından izin verin.');
+    return;
+  }
+  win.document.write(`<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
+    <title>ALIV AI</title>
+    <style>
+      body { font-family: -apple-system, Arial, sans-serif; padding: 40px; line-height: 1.6; color: #111; white-space: pre-wrap; }
+      h1 { font-size: 18px; border-bottom: 1px solid #ccc; padding-bottom: 8px; margin-bottom: 20px; }
+    </style></head>
+    <body><h1>ALIV AI</h1><div>${escapeHtml(text)}</div></body></html>`);
+  win.document.close();
+  win.focus();
+  setTimeout(() => win.print(), 300);
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 // ============================================================
@@ -200,11 +248,26 @@ const newChatBtn = document.getElementById('new-chat-btn');
 const logoutBtn = document.getElementById('logout-btn');
 const chatBrandMark = document.getElementById('chat-brand-mark');
 
+const fileInput = document.getElementById('file-input');
+const attachBtn = document.getElementById('attach-btn');
+const attachmentPreview = document.getElementById('attachment-preview');
+const attachmentThumb = document.getElementById('attachment-thumb');
+const attachmentIcon = document.getElementById('attachment-icon');
+const attachmentName = document.getElementById('attachment-name');
+const attachmentRemove = document.getElementById('attachment-remove');
+
 let history = []; // { role: 'user' | 'assistant', content: string }
+let attachedFile = null; // { name, mimeType, base64, previewDataUrl }
 
 const SYSTEM_PROMPT = {
   role: 'system',
-  content: 'Sen ALIV AI adlı, kullanıcılara yardımcı olan bir Türkçe yapay zeka asistanısın. Açık, kısa ve net cevaplar ver.',
+  content: 'Sen ALIV AI adlı, kullanıcılara yardımcı olan bir Türkçe yapay zeka asistanısın. Açık, kısa ve net cevaplar ver. Bir dosya (PDF, görsel veya metin) eklendiyse içeriğini analiz ederek kullanıcının isteğine göre yanıt ver (örneğin özetle, açıkla veya sorularını cevapla).',
+};
+
+const PLACEHOLDERS = {
+  default: 'Bir mesaj yazın...',
+  'image-gen': 'Oluşturmak istediğiniz görseli tanımlayın... (örn: dağ manzarası, gün batımı)',
+  'image-edit': 'Bir görsel ekleyin ve ne yapılmasını istediğinizi yazın (örn: arka plandaki insanları sil)',
 };
 
 function enterChat() {
@@ -215,13 +278,77 @@ function enterChat() {
     modelSelect.value = savedModel;
   }
 
+  updateModeUI();
   chatInput.focus();
+}
+
+function updateModeUI() {
+  const mode = modelSelect.value;
+  chatInput.placeholder = PLACEHOLDERS[mode] || PLACEHOLDERS.default;
+
+  if (mode === 'image-gen') {
+    clearAttachment();
+    attachBtn.classList.add('hidden');
+  } else {
+    attachBtn.classList.remove('hidden');
+  }
 }
 
 modelSelect.addEventListener('change', () => {
   localStorage.setItem(MODEL_KEY, modelSelect.value);
+  updateModeUI();
 });
 
+// ---- attachments ----
+attachBtn.addEventListener('click', () => fileInput.click());
+
+fileInput.addEventListener('change', async () => {
+  const file = fileInput.files[0];
+  fileInput.value = '';
+  if (!file) return;
+
+  if (file.size > MAX_FILE_SIZE) {
+    addMessage('error', 'Dosya çok büyük. En fazla 4MB destekleniyor.');
+    return;
+  }
+
+  try {
+    const dataUrl = await readFileAsDataUrl(file);
+    const base64 = dataUrl.split(',')[1];
+
+    attachedFile = {
+      name: file.name,
+      mimeType: file.type || 'application/octet-stream',
+      base64,
+      previewDataUrl: file.type.startsWith('image/') ? dataUrl : null,
+    };
+
+    attachmentName.textContent = file.name;
+    if (attachedFile.previewDataUrl) {
+      attachmentThumb.src = attachedFile.previewDataUrl;
+      attachmentThumb.classList.remove('hidden');
+      attachmentIcon.classList.add('hidden');
+    } else {
+      attachmentThumb.classList.add('hidden');
+      attachmentIcon.classList.remove('hidden');
+      attachmentIcon.textContent = attachedFile.mimeType === 'application/pdf' ? '📕' : '📄';
+    }
+    attachmentPreview.classList.remove('hidden');
+    attachBtn.classList.add('active');
+  } catch {
+    addMessage('error', 'Dosya okunamadı, lütfen tekrar deneyin.');
+  }
+});
+
+attachmentRemove.addEventListener('click', clearAttachment);
+
+function clearAttachment() {
+  attachedFile = null;
+  attachmentPreview.classList.add('hidden');
+  attachBtn.classList.remove('active');
+}
+
+// ---- input box ----
 function autoResize() {
   chatInput.style.height = 'auto';
   chatInput.style.height = Math.min(chatInput.scrollHeight, 140) + 'px';
@@ -235,26 +362,92 @@ chatInput.addEventListener('keydown', (e) => {
   }
 });
 
-function addMessage(role, content, modelLabel) {
+// ---- message rendering ----
+function addMessage(role, content, opts = {}) {
   emptyState.classList.add('hidden');
 
   const bubble = document.createElement('div');
   bubble.className = `msg ${role}`;
 
-  if (role === 'assistant' && modelLabel) {
+  if (role === 'assistant' && opts.modelLabel) {
     const tag = document.createElement('span');
     tag.className = 'model-tag';
-    tag.textContent = modelLabel;
+    tag.textContent = opts.modelLabel;
     bubble.appendChild(tag);
+  }
+
+  if (opts.attachment) {
+    const chip = document.createElement('div');
+    chip.className = 'attachment-chip';
+    if (opts.attachment.previewDataUrl) {
+      const img = document.createElement('img');
+      img.src = opts.attachment.previewDataUrl;
+      chip.appendChild(img);
+    } else {
+      const icon = document.createElement('span');
+      icon.textContent = opts.attachment.mimeType === 'application/pdf' ? '📕' : '📄';
+      chip.appendChild(icon);
+    }
+    const name = document.createElement('span');
+    name.textContent = opts.attachment.name;
+    chip.appendChild(name);
+    bubble.appendChild(chip);
   }
 
   const text = document.createElement('span');
   text.textContent = content;
   bubble.appendChild(text);
 
+  if (role === 'assistant') {
+    const toolbar = document.createElement('div');
+    toolbar.className = 'msg-toolbar';
+
+    const txtBtn = document.createElement('button');
+    txtBtn.type = 'button';
+    txtBtn.textContent = '⬇ Metin (.txt)';
+    txtBtn.addEventListener('click', () => downloadText('aliv-yanit.txt', content));
+
+    const pdfBtn = document.createElement('button');
+    pdfBtn.type = 'button';
+    pdfBtn.textContent = '⬇ PDF olarak kaydet';
+    pdfBtn.addEventListener('click', () => printAsPdf(content));
+
+    toolbar.appendChild(txtBtn);
+    toolbar.appendChild(pdfBtn);
+    bubble.appendChild(toolbar);
+  }
+
   messagesEl.appendChild(bubble);
   messagesEl.scrollTop = messagesEl.scrollHeight;
   return bubble;
+}
+
+function addImageMessage(caption, imgSrc, filename) {
+  emptyState.classList.add('hidden');
+
+  const bubble = document.createElement('div');
+  bubble.className = 'msg image-result';
+
+  if (caption) {
+    const p = document.createElement('p');
+    p.textContent = caption;
+    bubble.appendChild(p);
+  }
+
+  const img = document.createElement('img');
+  img.src = imgSrc;
+  img.alt = caption || 'Oluşturulan görsel';
+  bubble.appendChild(img);
+
+  const link = document.createElement('a');
+  link.href = imgSrc;
+  link.download = filename;
+  link.className = 'download-link';
+  link.textContent = '⬇ Görseli indir';
+  bubble.appendChild(link);
+
+  messagesEl.appendChild(bubble);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
 function addTypingBubble() {
@@ -267,19 +460,15 @@ function addTypingBubble() {
   return bubble;
 }
 
-chatForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-
-  const text = chatInput.value.trim();
-  if (!text) return;
-
-  chatInput.value = '';
-  autoResize();
+// ---- send flows ----
+async function sendChatMessage(text) {
+  const attachmentForMessage = attachedFile
+    ? { name: attachedFile.name, mimeType: attachedFile.mimeType, previewDataUrl: attachedFile.previewDataUrl }
+    : null;
 
   history.push({ role: 'user', content: text });
-  addMessage('user', text);
+  addMessage('user', text, { attachment: attachmentForMessage });
 
-  sendBtn.disabled = true;
   chatBrandMark.classList.add('thinking');
   const typingBubble = addTypingBubble();
 
@@ -291,11 +480,15 @@ chatForm.addEventListener('submit', async (e) => {
       messages: [SYSTEM_PROMPT, ...history.slice(-20)],
     };
 
+    if (attachedFile) {
+      payload.file = { mimeType: attachedFile.mimeType, data: attachedFile.base64 };
+    }
+
     const data = await postJSON('/api/chat', payload);
     history.push({ role: 'assistant', content: data.reply });
 
     typingBubble.remove();
-    addMessage('assistant', data.reply, modelSelect.options[modelSelect.selectedIndex].text);
+    addMessage('assistant', data.reply, { modelLabel: modelSelect.options[modelSelect.selectedIndex].text });
   } catch (err) {
     typingBubble.remove();
     addMessage('error', err.message);
@@ -305,14 +498,98 @@ chatForm.addEventListener('submit', async (e) => {
       setTimeout(() => location.reload(), 1500);
     }
   } finally {
-    sendBtn.disabled = false;
     chatBrandMark.classList.remove('thinking');
-    chatInput.focus();
+    clearAttachment();
   }
+}
+
+async function generateImage(prompt) {
+  addMessage('user', prompt);
+  chatBrandMark.classList.add('thinking');
+  const typingBubble = addTypingBubble();
+
+  try {
+    const seed = Math.floor(Math.random() * 1e9);
+    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true&seed=${seed}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Görsel oluşturulamadı, lütfen tekrar deneyin.');
+
+    const blob = await res.blob();
+    const objUrl = URL.createObjectURL(blob);
+
+    typingBubble.remove();
+    addImageMessage(prompt, objUrl, 'aliv-gorsel.png');
+  } catch (err) {
+    typingBubble.remove();
+    addMessage('error', err.message);
+  } finally {
+    chatBrandMark.classList.remove('thinking');
+  }
+}
+
+async function editImage(prompt) {
+  if (!attachedFile || !attachedFile.mimeType.startsWith('image/')) {
+    addMessage('error', 'Lütfen önce düzenlemek istediğiniz görseli ekleyin.');
+    return;
+  }
+
+  const attachmentForMessage = { name: attachedFile.name, mimeType: attachedFile.mimeType, previewDataUrl: attachedFile.previewDataUrl };
+  addMessage('user', prompt, { attachment: attachmentForMessage });
+
+  chatBrandMark.classList.add('thinking');
+  const typingBubble = addTypingBubble();
+
+  try {
+    const data = await postJSON('/api/image-edit', {
+      token: getToken(),
+      prompt,
+      image: { mimeType: attachedFile.mimeType, data: attachedFile.base64 },
+    });
+
+    typingBubble.remove();
+    const src = `data:${data.image.mimeType};base64,${data.image.data}`;
+    addImageMessage(data.text || '', src, 'aliv-duzenlenmis.png');
+  } catch (err) {
+    typingBubble.remove();
+    addMessage('error', err.message);
+
+    if (/oturum/i.test(err.message)) {
+      clearSession();
+      setTimeout(() => location.reload(), 1500);
+    }
+  } finally {
+    chatBrandMark.classList.remove('thinking');
+    clearAttachment();
+  }
+}
+
+chatForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const text = chatInput.value.trim();
+  if (!text) return;
+
+  chatInput.value = '';
+  autoResize();
+  sendBtn.disabled = true;
+
+  const mode = modelSelect.value;
+
+  if (mode === 'image-gen') {
+    await generateImage(text);
+  } else if (mode === 'image-edit') {
+    await editImage(text);
+  } else {
+    await sendChatMessage(text);
+  }
+
+  sendBtn.disabled = false;
+  chatInput.focus();
 });
 
 newChatBtn.addEventListener('click', () => {
   history = [];
+  clearAttachment();
   messagesEl.innerHTML = '';
   messagesEl.appendChild(emptyState);
   emptyState.classList.remove('hidden');

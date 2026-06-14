@@ -3,16 +3,17 @@ import { verifyToken } from './_session.js';
 // Each entry maps a public model id (used by the frontend) to a provider + the
 // model name that provider expects.
 const MODELS = {
-  'gemini-2.0-flash': { provider: 'gemini', model: 'gemini-2.0-flash' },
-  'gemini-1.5-flash': { provider: 'gemini', model: 'gemini-1.5-flash' },
-  'groq-llama-70b': { provider: 'groq', model: 'llama-3.3-70b-versatile' },
-  'groq-llama-8b': { provider: 'groq', model: 'llama-3.1-8b-instant' },
-  'or-llama-8b': { provider: 'openrouter', model: 'meta-llama/llama-3.1-8b-instruct:free' },
-  'or-gemma-9b': { provider: 'openrouter', model: 'google/gemma-2-9b-it:free' },
-  'or-mistral-7b': { provider: 'openrouter', model: 'mistralai/mistral-7b-instruct:free' },
+  'gemini-2.0-flash': { provider: 'gemini', model: 'gemini-2.0-flash', vision: true },
+  'gemini-1.5-flash': { provider: 'gemini', model: 'gemini-1.5-flash', vision: true },
+  'groq-llama-70b': { provider: 'groq', model: 'llama-3.3-70b-versatile', vision: false },
+  'groq-llama-8b': { provider: 'groq', model: 'llama-3.1-8b-instant', vision: false },
+  'or-llama-8b': { provider: 'openrouter', model: 'meta-llama/llama-3.1-8b-instruct:free', vision: false },
+  'or-gemma-9b': { provider: 'openrouter', model: 'google/gemma-2-9b-it:free', vision: false },
+  'or-mistral-7b': { provider: 'openrouter', model: 'mistralai/mistral-7b-instruct:free', vision: false },
 };
 
 const DEFAULT_MODEL = 'gemini-2.0-flash';
+const VISION_FALLBACK = 'gemini-2.0-flash';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -20,7 +21,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { token, model, messages } = req.body || {};
+    const { token, model, messages, file } = req.body || {};
 
     const username = verifyToken(token);
     if (!username) {
@@ -31,11 +32,17 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Mesaj bulunamadı.' });
     }
 
-    const config = MODELS[model] || MODELS[DEFAULT_MODEL];
+    let config = MODELS[model] || MODELS[DEFAULT_MODEL];
+
+    // A file (PDF/image/text) can only be understood by a vision-capable model.
+    // If the selected model can't handle it, transparently fall back to Gemini.
+    if (file && !config.vision) {
+      config = MODELS[VISION_FALLBACK];
+    }
 
     let reply;
     if (config.provider === 'gemini') {
-      reply = await callGemini(config.model, messages);
+      reply = await callGemini(config.model, messages, file);
     } else if (config.provider === 'groq') {
       reply = await callOpenAICompatible(
         'https://api.groq.com/openai/v1/chat/completions',
@@ -63,7 +70,7 @@ export default async function handler(req, res) {
   }
 }
 
-async function callGemini(model, messages) {
+async function callGemini(model, messages, file) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY tanımlı değil');
 
@@ -74,6 +81,16 @@ async function callGemini(model, messages) {
       role: m.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: m.content }],
     }));
+
+  // Attach the uploaded file (image/PDF/text) to the most recent user turn.
+  if (file && file.data && file.mimeType) {
+    for (let i = contents.length - 1; i >= 0; i--) {
+      if (contents[i].role === 'user') {
+        contents[i].parts.push({ inlineData: { mimeType: file.mimeType, data: file.data } });
+        break;
+      }
+    }
+  }
 
   const body = { contents };
   if (systemMessages) {

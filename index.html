@@ -111,6 +111,10 @@
             <option value="or-gemma-9b">Gemma 2 9B</option>
             <option value="or-mistral-7b">Mistral 7B</option>
           </optgroup>
+          <optgroup label="Görsel">
+            <option value="image-gen">Görsel Oluştur</option>
+            <option value="image-edit">Görsel Düzenle · deneysel</option>
+          </optgroup>
         </select>
       </div>
 
@@ -132,7 +136,18 @@
       </div>
     </section>
 
+    <div id="attachment-preview" class="attachment-preview hidden">
+      <img id="attachment-thumb" class="attachment-thumb hidden" alt="" />
+      <span id="attachment-icon" class="attachment-icon hidden">📄</span>
+      <span id="attachment-name" class="attachment-name"></span>
+      <button type="button" id="attachment-remove" class="attachment-remove" aria-label="Eki kaldır">×</button>
+    </div>
+
     <form id="chat-form" class="chat-input-bar" autocomplete="off">
+      <input type="file" id="file-input" accept="image/png,image/jpeg,image/webp,application/pdf,text/plain,.md" hidden />
+      <button type="button" id="attach-btn" class="icon-btn attach-btn" title="Dosya ekle">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+      </button>
       <textarea id="chat-input" placeholder="Bir mesaj yazın..." rows="1" required></textarea>
       <button type="submit" id="send-btn" class="send-btn" aria-label="Gönder">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
