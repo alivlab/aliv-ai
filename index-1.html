@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>ALIV AI</title>
+  <meta name="description" content="ALIV AI — ücretsiz yapay zeka modelleriyle sohbet edin." />
+  <link rel="icon" type="image/png" href="assets/icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ================= AUTH VIEW ================= -->
+  <main id="auth-view" class="view">
+    <div class="auth-card">
+      <div class="brand">
+        <img src="assets/icon.png" alt="ALIV" class="brand-mark" id="brand-mark" />
+        <span class="brand-word">ALIV</span>
+      </div>
+      <p class="auth-tagline">Ücretsiz yapay zeka modelleriyle sohbet edin</p>
+
+      <div class="auth-tabs" role="tablist">
+        <button class="tab active" data-tab="login" type="button">Giriş Yap</button>
+        <button class="tab" data-tab="register" type="button">Kayıt Ol</button>
+      </div>
+
+      <!-- ---- LOGIN ---- -->
+      <form id="login-form" class="auth-form active" autocomplete="off">
+        <div class="field">
+          <label for="login-username">Kullanıcı adı</label>
+          <input type="text" id="login-username" name="username" autocomplete="username" placeholder="kullaniciadi" required />
+        </div>
+
+        <button type="button" id="login-step1-btn" class="primary-btn">Giriş Yap</button>
+
+        <div id="login-otp-wrap" class="otp-wrap">
+          <div class="field">
+            <label for="login-otp">Authenticator kodu</label>
+            <input type="text" id="login-otp" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="000000" class="otp-input" />
+          </div>
+          <button type="submit" class="primary-btn">Doğrula ve Giriş Yap</button>
+        </div>
+
+        <p class="form-msg" id="login-msg"></p>
+      </form>
+
+      <!-- ---- REGISTER ---- -->
+      <form id="register-form" class="auth-form" autocomplete="off">
+
+        <!-- step 1: choose username -->
+        <div class="reg-step active" data-step="1">
+          <div class="field">
+            <label for="register-username">Kullanıcı adı seç</label>
+            <input type="text" id="register-username" name="username" autocomplete="off" placeholder="kullaniciadi" maxlength="20" required />
+            <span class="hint">3-20 karakter, sadece harf, rakam ve _</span>
+          </div>
+          <button type="button" id="register-step1-btn" class="primary-btn">Devam Et</button>
+        </div>
+
+        <!-- step 2: scan QR -->
+        <div class="reg-step" data-step="2">
+          <p class="step-title">Google Authenticator ile QR kodu tarayın</p>
+          <div class="qr-box">
+            <img id="register-qr" src="" alt="QR kod" />
+          </div>
+          <details class="manual-key">
+            <summary>QR okutamıyorum, anahtarı manuel gireceğim</summary>
+            <code id="register-secret"></code>
+          </details>
+          <button type="button" id="register-step2-btn" class="primary-btn">Taradım, devam et</button>
+        </div>
+
+        <!-- step 3: confirm code -->
+        <div class="reg-step" data-step="3">
+          <p class="step-title">Authenticator uygulamasındaki 6 haneli kodu girin</p>
+          <div class="field">
+            <input type="text" id="register-otp" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="000000" class="otp-input" />
+          </div>
+          <button type="submit" class="primary-btn">Hesabı Doğrula ve Giriş Yap</button>
+        </div>
+
+        <p class="form-msg" id="register-msg"></p>
+      </form>
+
+    </div>
+  </main>
+
+  <!-- ================= CHAT VIEW ================= -->
+  <main id="chat-view" class="view hidden">
+    <header class="chat-header">
+      <div class="brand brand-sm">
+        <img src="assets/icon.png" alt="ALIV" class="brand-mark" id="chat-brand-mark" />
+        <span class="brand-word">ALIV</span>
+      </div>
+
+      <div class="model-select-wrap">
+        <select id="model-select" aria-label="Model seç">
+          <optgroup label="Google Gemini">
+            <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+            <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+          </optgroup>
+          <optgroup label="Groq">
+            <option value="groq-llama-70b">Llama 3.3 70B</option>
+            <option value="groq-llama-8b">Llama 3.1 8B (hızlı)</option>
+          </optgroup>
+          <optgroup label="OpenRouter">
+            <option value="or-llama-8b">Llama 3.1 8B</option>
+            <option value="or-gemma-9b">Gemma 2 9B</option>
+            <option value="or-mistral-7b">Mistral 7B</option>
+          </optgroup>
+        </select>
+      </div>
+
+      <div class="header-actions">
+        <button id="new-chat-btn" class="icon-btn" title="Yeni sohbet" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <button id="logout-btn" class="icon-btn" title="Çıkış yap" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <section id="messages" class="messages">
+      <div class="empty-state" id="empty-state">
+        <img src="assets/icon.png" alt="" class="brand-mark empty-mark" />
+        <h1>Bugün nasıl yardımcı olabilirim?</h1>
+        <p>Yukarıdan bir model seçin ve yazmaya başlayın.</p>
+      </div>
+    </section>
+
+    <form id="chat-form" class="chat-input-bar" autocomplete="off">
+      <textarea id="chat-input" placeholder="Bir mesaj yazın..." rows="1" required></textarea>
+      <button type="submit" id="send-btn" class="send-btn" aria-label="Gönder">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+      </button>
+    </form>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
