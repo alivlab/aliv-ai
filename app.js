@@ -95,12 +95,15 @@ function readFileAsDataUrl(file) {
 // ============================================================
 function buildLogoIntro() {
   const overlay = document.getElementById('logo-intro');
+  const stage = document.getElementById('intro-stage');
   const container = document.getElementById('intro-tiles');
   if (!overlay || !container) return;
 
   const cols = 6;
   const rows = 6;
   const tileSize = window.innerWidth < 480 ? 18 : 24;
+  const center = (cols - 1) / 2;
+  const maxDist = Math.hypot(center, center);
 
   container.style.width = `${cols * tileSize}px`;
   container.style.height = `${rows * tileSize}px`;
@@ -123,7 +126,11 @@ function buildLogoIntro() {
       tile.style.setProperty('--dx', `${dx}px`);
       tile.style.setProperty('--dy', `${dy}px`);
       tile.style.setProperty('--rot', `${rot}deg`);
-      tile.style.transitionDelay = `${Math.random() * 0.35}s`;
+
+      // Tiles near the center settle first, outer tiles follow —
+      // gives the assembly a "core forms, frame completes" feel.
+      const dist = Math.hypot(c - center, r - center) / maxDist;
+      tile.style.transitionDelay = `${dist * 0.22 + Math.random() * 0.13}s`;
 
       container.appendChild(tile);
     }
@@ -133,7 +140,10 @@ function buildLogoIntro() {
     requestAnimationFrame(() => container.classList.add('assembled'));
   });
 
-  setTimeout(() => overlay.classList.add('done'), 1700);
+  // Reveal the wordmark once the tiles have mostly settled, then hold
+  // briefly before the overlay fades to reveal the app underneath.
+  setTimeout(() => stage?.classList.add('reveal-word'), 1200);
+  setTimeout(() => overlay.classList.add('done'), 2300);
 }
 
 // ============================================================
@@ -207,12 +217,136 @@ tabs.forEach((tab) => {
   });
 });
 
+// ---- OTP digit-group helper (used by both login and register) ----
+function setupOtpGroup(groupEl, onComplete) {
+  const boxes = Array.from(groupEl.querySelectorAll('.otp-box'));
+  let autoTimer = null;
+
+  function getCode() {
+    return boxes.map((b) => b.value).join('');
+  }
+
+  function pulse(box) {
+    box.classList.remove('filled');
+    // restart the pop animation even if the class was already applied
+    requestAnimationFrame(() => box.classList.add('filled'));
+  }
+
+  function maybeComplete() {
+    const code = getCode();
+    if (/^\d{6}$/.test(code)) {
+      clearTimeout(autoTimer);
+      autoTimer = setTimeout(() => onComplete(code), 120);
+    }
+  }
+
+  boxes.forEach((box, i) => {
+    box.addEventListener('input', () => {
+      box.value = box.value.replace(/\D/g, '').slice(0, 1);
+      groupEl.classList.remove('shake');
+
+      if (box.value) {
+        pulse(box);
+        if (i < boxes.length - 1) boxes[i + 1].focus();
+      } else {
+        box.classList.remove('filled');
+      }
+      maybeComplete();
+    });
+
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'Backspace' && !box.value && i > 0) {
+        e.preventDefault();
+        boxes[i - 1].value = '';
+        boxes[i - 1].classList.remove('filled');
+        boxes[i - 1].focus();
+      }
+    });
+
+    box.addEventListener('paste', (e) => {
+      const text = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '');
+      if (!text) return;
+      e.preventDefault();
+      const digits = text.slice(0, boxes.length).split('');
+      digits.forEach((d, idx) => {
+        boxes[idx].value = d;
+        pulse(boxes[idx]);
+      });
+      boxes[Math.min(digits.length, boxes.length - 1)].focus();
+      maybeComplete();
+    });
+  });
+
+  return {
+    getCode,
+    focusFirst: () => boxes[0].focus(),
+    setVerifying(on) {
+      groupEl.classList.toggle('verifying', on);
+      boxes.forEach((b) => { b.disabled = on; });
+    },
+    shake() {
+      groupEl.classList.remove('success');
+      groupEl.classList.add('shake');
+      setTimeout(() => groupEl.classList.remove('shake'), 500);
+    },
+    success() {
+      groupEl.classList.add('success');
+    },
+    resetState() {
+      groupEl.classList.remove('verifying', 'shake', 'success');
+    },
+    clear(focusFirst = true) {
+      boxes.forEach((b) => b.classList.remove('filled', 'success'));
+      boxes.forEach((b) => { b.value = ''; });
+      groupEl.classList.remove('success');
+      if (focusFirst) boxes[0].focus();
+    },
+  };
+}
+
 // ---- LOGIN ----
 const loginUsername = document.getElementById('login-username');
 const loginStep1Btn = document.getElementById('login-step1-btn');
 const loginOtpWrap = document.getElementById('login-otp-wrap');
-const loginOtp = document.getElementById('login-otp');
 const loginMsg = document.getElementById('login-msg');
+const loginSubmitBtn = loginOtpWrap.querySelector('.secondary-btn');
+
+const loginOtpCtl = setupOtpGroup(document.getElementById('login-otp-group'), (code) => attemptLogin(code));
+
+let loginVerifying = false;
+
+async function attemptLogin(code) {
+  if (loginVerifying) return;
+
+  const username = loginUsername.value.trim();
+  if (!username) {
+    loginMsg.textContent = 'Lütfen kullanıcı adınızı girin.';
+    return;
+  }
+
+  loginVerifying = true;
+  loginMsg.textContent = '';
+  loginMsg.classList.remove('success');
+  loginSubmitBtn.disabled = true;
+  loginOtpCtl.resetState();
+  loginOtpCtl.setVerifying(true);
+
+  try {
+    const data = await postJSON('/api/verify', { username, code, mode: 'login' });
+    loginOtpCtl.setVerifying(false);
+    loginOtpCtl.success();
+    setSession(data.token, data.username);
+    setTimeout(enterChat, 420); // let the success glow play briefly
+  } catch (err) {
+    loginOtpCtl.setVerifying(false);
+    loginOtpCtl.shake();
+    loginMsg.textContent = err.message;
+    setTimeout(() => loginOtpCtl.clear(true), 200);
+  } finally {
+    loginVerifying = false;
+    loginSubmitBtn.disabled = false;
+  }
+}
 
 loginStep1Btn.addEventListener('click', () => {
   const username = loginUsername.value.trim();
@@ -226,38 +360,26 @@ loginStep1Btn.addEventListener('click', () => {
   if (loginOtpWrap.classList.contains('open')) return;
 
   loginOtpWrap.classList.add('open');
-  loginUsername.setAttribute('disabled', 'true');
   loginStep1Btn.classList.add('hidden');
-  setTimeout(() => loginOtp.focus(), 250);
+  setTimeout(() => loginOtpCtl.focusFirst(), 280);
 });
 
-loginForm.addEventListener('submit', async (e) => {
+// Fallback: manual submit (e.g. autofill filled the boxes without firing input events)
+loginForm.addEventListener('submit', (e) => {
   e.preventDefault();
-  loginMsg.textContent = '';
-  loginMsg.classList.remove('success');
-
-  const username = loginUsername.value.trim();
-  const code = loginOtp.value.trim();
 
   if (!loginOtpWrap.classList.contains('open')) {
     loginStep1Btn.click();
     return;
   }
 
+  const code = loginOtpCtl.getCode();
   if (!/^\d{6}$/.test(code)) {
     loginMsg.textContent = 'Lütfen 6 haneli kodu girin.';
     return;
   }
 
-  try {
-    const data = await postJSON('/api/verify', { username, code, mode: 'login' });
-    setSession(data.token, data.username);
-    enterChat();
-  } catch (err) {
-    loginMsg.textContent = err.message;
-    loginOtp.value = '';
-    loginOtp.focus();
-  }
+  attemptLogin(code);
 });
 
 // ---- REGISTER ----
@@ -266,16 +388,46 @@ const registerStep1Btn = document.getElementById('register-step1-btn');
 const registerStep2Btn = document.getElementById('register-step2-btn');
 const registerQr = document.getElementById('register-qr');
 const registerSecret = document.getElementById('register-secret');
-const registerOtp = document.getElementById('register-otp');
 const registerMsg = document.getElementById('register-msg');
 const regSteps = document.querySelectorAll('.reg-step');
+const registerStep3 = document.querySelector('.reg-step[data-step="3"]');
+const registerSubmitBtn = registerStep3.querySelector('.secondary-btn');
+
+const registerOtpCtl = setupOtpGroup(document.getElementById('register-otp-group'), (code) => attemptRegisterVerify(code));
 
 let pendingUsername = '';
+let registerVerifying = false;
 
 function goToStep(n) {
   regSteps.forEach((step) => {
     step.classList.toggle('active', Number(step.dataset.step) === n);
   });
+}
+
+async function attemptRegisterVerify(code) {
+  if (registerVerifying) return;
+
+  registerVerifying = true;
+  registerMsg.textContent = '';
+  registerSubmitBtn.disabled = true;
+  registerOtpCtl.resetState();
+  registerOtpCtl.setVerifying(true);
+
+  try {
+    const data = await postJSON('/api/verify', { username: pendingUsername, code, mode: 'register' });
+    registerOtpCtl.setVerifying(false);
+    registerOtpCtl.success();
+    setSession(data.token, data.username);
+    setTimeout(enterChat, 420);
+  } catch (err) {
+    registerOtpCtl.setVerifying(false);
+    registerOtpCtl.shake();
+    registerMsg.textContent = err.message;
+    setTimeout(() => registerOtpCtl.clear(true), 200);
+  } finally {
+    registerVerifying = false;
+    registerSubmitBtn.disabled = false;
+  }
 }
 
 registerStep1Btn.addEventListener('click', async () => {
@@ -306,28 +458,20 @@ registerStep1Btn.addEventListener('click', async () => {
 
 registerStep2Btn.addEventListener('click', () => {
   goToStep(3);
-  setTimeout(() => registerOtp.focus(), 250);
+  setTimeout(() => registerOtpCtl.focusFirst(), 280);
 });
 
-registerForm.addEventListener('submit', async (e) => {
+// Fallback: manual submit
+registerForm.addEventListener('submit', (e) => {
   e.preventDefault();
-  registerMsg.textContent = '';
 
-  const code = registerOtp.value.trim();
+  const code = registerOtpCtl.getCode();
   if (!/^\d{6}$/.test(code)) {
     registerMsg.textContent = 'Lütfen 6 haneli kodu girin.';
     return;
   }
 
-  try {
-    const data = await postJSON('/api/verify', { username: pendingUsername, code, mode: 'register' });
-    setSession(data.token, data.username);
-    enterChat();
-  } catch (err) {
-    registerMsg.textContent = err.message;
-    registerOtp.value = '';
-    registerOtp.focus();
-  }
+  attemptRegisterVerify(code);
 });
 
 // ============================================================
@@ -341,7 +485,6 @@ const sendBtn = document.getElementById('send-btn');
 const newChatBtn = document.getElementById('new-chat-btn');
 const logoutBtn = document.getElementById('logout-btn');
 const chatBrandMark = document.getElementById('chat-brand-mark');
-const modeButtons = document.querySelectorAll('.mode-btn');
 
 const fileInput = document.getElementById('file-input');
 const attachBtn = document.getElementById('attach-btn');
@@ -351,9 +494,18 @@ const attachmentIcon = document.getElementById('attachment-icon');
 const attachmentName = document.getElementById('attachment-name');
 const attachmentRemove = document.getElementById('attachment-remove');
 
+// model selector
+const modelSelector = document.getElementById('model-selector');
+const modelSelectorBtn = document.getElementById('model-selector-btn');
+const modelSelectorPanel = document.getElementById('model-selector-panel');
+const mselIcon = document.getElementById('msel-icon');
+const mselLabel = document.getElementById('msel-label');
+const mselOptions = document.querySelectorAll('.msel-option');
+const autoBadge = document.getElementById('auto-badge');
+
 let history = []; // { role: 'user' | 'assistant', content: string }
 let attachedFile = null; // { name, mimeType, base64, previewDataUrl }
-let currentMode = 'chat'; // 'chat' | 'image'
+let currentCategory = 'auto'; // 'auto' | 'fast' | 'quality' | 'code' | 'image'
 
 const SYSTEM_PROMPT = {
   role: 'system',
@@ -363,32 +515,99 @@ const SYSTEM_PROMPT = {
 function enterChat() {
   showView('chat');
   loadModels();
+  updateAutoBadge();
   updatePlaceholder();
   chatInput.focus();
 }
 
-// ---- mode toggle ----
-modeButtons.forEach((btn) => {
-  btn.addEventListener('click', () => {
-    if (btn.classList.contains('active')) return;
+// ---- model selector ----
+function closeModelSelector() {
+  modelSelector.classList.remove('open');
+  modelSelectorPanel.classList.add('hidden');
+  modelSelectorBtn.setAttribute('aria-expanded', 'false');
+}
 
-    modeButtons.forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentMode = btn.dataset.mode;
+modelSelectorBtn.addEventListener('click', () => {
+  const willOpen = modelSelectorPanel.classList.contains('hidden');
+  if (willOpen) {
+    modelSelector.classList.add('open');
+    modelSelectorPanel.classList.remove('hidden');
+    modelSelectorBtn.setAttribute('aria-expanded', 'true');
+  } else {
+    closeModelSelector();
+  }
+});
 
-    if (currentMode === 'image' && attachedFile && !attachedFile.mimeType.startsWith('image/')) {
-      clearAttachment();
+document.addEventListener('click', (e) => {
+  if (!modelSelector.classList.contains('open')) return;
+  if (!modelSelector.contains(e.target)) closeModelSelector();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeModelSelector();
+});
+
+function updateAutoBadge() {
+  autoBadge.classList.toggle('hidden', currentCategory !== 'auto');
+}
+
+function selectCategory(category) {
+  const option = document.querySelector(`.msel-option[data-category="${category}"]`);
+  if (!option) return;
+
+  currentCategory = category;
+
+  mselOptions.forEach((opt) => {
+    const active = opt === option;
+    opt.classList.toggle('active', active);
+    opt.setAttribute('aria-selected', String(active));
+  });
+
+  mselIcon.innerHTML = option.querySelector('.msel-opt-icon').innerHTML;
+  mselLabel.textContent = option.querySelector('.msel-option-title').textContent;
+  updateAutoBadge();
+  closeModelSelector();
+
+  if (category === 'image' && attachedFile && !attachedFile.mimeType.startsWith('image/')) {
+    clearAttachment();
+  }
+
+  updatePlaceholder();
+}
+
+mselOptions.forEach((opt) => {
+  opt.addEventListener('click', () => selectCategory(opt.dataset.category));
+});
+
+// ---- onboarding cards (empty state) ----
+document.querySelectorAll('.onboarding-card').forEach((card) => {
+  card.addEventListener('click', () => {
+    if (card.dataset.category) selectCategory(card.dataset.category);
+
+    if (card.dataset.prompt) {
+      chatInput.value = card.dataset.prompt;
+      autoResize();
     }
 
-    updatePlaceholder();
+    if (card.dataset.hintAttach === 'true') {
+      fileInput.click();
+    }
+
+    chatInput.focus();
+    const len = chatInput.value.length;
+    chatInput.setSelectionRange(len, len);
   });
 });
 
 function updatePlaceholder() {
-  if (currentMode === 'image') {
+  if (currentCategory === 'image') {
     chatInput.placeholder = attachedFile
       ? 'Bu görselde ne yapılmasını istiyorsunuz? (örn: arka plandaki insanları sil)'
       : 'Oluşturmak istediğiniz görseli tanımlayın... (örn: dağ manzarası, gün batımı)';
+  } else if (currentCategory === 'vision') {
+    chatInput.placeholder = attachedFile
+      ? 'Eklediğiniz görsel/dosya hakkında bir soru sorun...'
+      : 'Bir görsel veya dosya ekleyip soru sorun (Görsel Anlama)...';
   } else {
     chatInput.placeholder = attachedFile
       ? 'Eklediğiniz dosya hakkında bir soru sorun veya özet isteyin...'
@@ -409,7 +628,7 @@ fileInput.addEventListener('change', async () => {
     return;
   }
 
-  if (currentMode === 'image' && !file.type.startsWith('image/')) {
+  if (currentCategory === 'image' && !file.type.startsWith('image/')) {
     addMessage('error', 'Görsel modunda sadece resim dosyası ekleyebilirsiniz.');
     return;
   }
@@ -466,6 +685,53 @@ chatInput.addEventListener('keydown', (e) => {
   }
 });
 
+// ---- icons for message actions ----
+const ICONS = {
+  copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+  refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>',
+  download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+};
+
+function actionBtn(iconHtml, label, onClick) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'msg-action-btn';
+  btn.title = label;
+  btn.setAttribute('aria-label', label);
+  btn.innerHTML = iconHtml;
+  btn.addEventListener('click', onClick);
+  return btn;
+}
+
+function clearRegenerateButtons() {
+  messagesEl.querySelectorAll('.msg-action-btn.action-regen').forEach((b) => b.remove());
+}
+
+// ---- streaming-style reveal for assistant replies ----
+function revealText(el, text) {
+  const totalTicks = 60;
+  const chunk = Math.max(1, Math.ceil(text.length / totalTicks));
+  const cursor = document.createElement('span');
+  cursor.className = 'reveal-cursor';
+
+  let i = 0;
+  el.textContent = '';
+  el.appendChild(cursor);
+
+  const interval = setInterval(() => {
+    i += chunk;
+    if (i >= text.length) {
+      clearInterval(interval);
+      el.textContent = text;
+      return;
+    }
+    el.textContent = text.slice(0, i);
+    el.appendChild(cursor);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }, 18);
+}
+
 // ---- message rendering ----
 function addMessage(role, content, opts = {}) {
   emptyState.classList.add('hidden');
@@ -476,7 +742,7 @@ function addMessage(role, content, opts = {}) {
   if (role === 'assistant' && opts.modelLabel) {
     const tag = document.createElement('span');
     tag.className = 'model-tag';
-    tag.textContent = opts.modelLabel;
+    tag.innerHTML = `<span class="dot"></span>${opts.modelLabel}`;
     bubble.appendChild(tag);
   }
 
@@ -499,25 +765,52 @@ function addMessage(role, content, opts = {}) {
   }
 
   const text = document.createElement('span');
-  text.textContent = content;
+  text.className = 'msg-text';
   bubble.appendChild(text);
+
+  if (role === 'assistant' && opts.stream) {
+    revealText(text, content);
+  } else {
+    text.textContent = content;
+  }
 
   if (role === 'assistant') {
     const toolbar = document.createElement('div');
     toolbar.className = 'msg-toolbar';
 
-    const txtBtn = document.createElement('button');
-    txtBtn.type = 'button';
-    txtBtn.textContent = '⬇ Metin (.txt)';
-    txtBtn.addEventListener('click', () => downloadText('aliv-yanit.txt', content));
+    const copy = actionBtn(ICONS.copy, 'Kopyala', () => {
+      navigator.clipboard?.writeText(content).then(() => {
+        copy.innerHTML = ICONS.check;
+        copy.classList.add('copied');
+        setTimeout(() => {
+          copy.innerHTML = ICONS.copy;
+          copy.classList.remove('copied');
+        }, 1400);
+      });
+    });
+    toolbar.appendChild(copy);
 
-    const pdfBtn = document.createElement('button');
-    pdfBtn.type = 'button';
-    pdfBtn.textContent = '⬇ PDF olarak kaydet';
-    pdfBtn.addEventListener('click', () => printAsPdf(content));
+    if (opts.isLatest) {
+      clearRegenerateButtons();
+      const regen = actionBtn(ICONS.refresh, 'Yeniden oluştur', () => regenerate());
+      regen.classList.add('action-regen');
+      toolbar.appendChild(regen);
+    }
 
-    toolbar.appendChild(txtBtn);
-    toolbar.appendChild(pdfBtn);
+    const dl = actionBtn(ICONS.download, 'Metin olarak indir (.txt)', () => downloadText('aliv-yanit.txt', content));
+    toolbar.appendChild(dl);
+
+    bubble.appendChild(toolbar);
+  }
+
+  if (role === 'error' && opts.onRetry) {
+    const toolbar = document.createElement('div');
+    toolbar.className = 'msg-toolbar';
+    const retry = actionBtn(ICONS.refresh, 'Tekrar dene', () => {
+      bubble.remove();
+      opts.onRetry();
+    });
+    toolbar.appendChild(retry);
     bubble.appendChild(toolbar);
   }
 
@@ -543,25 +836,78 @@ function addImageMessage(caption, imgSrc, filename) {
   img.alt = caption || 'Oluşturulan görsel';
   bubble.appendChild(img);
 
-  const link = document.createElement('a');
-  link.href = imgSrc;
-  link.download = filename;
-  link.className = 'download-link';
-  link.textContent = '⬇ Görseli indir';
-  bubble.appendChild(link);
+  const actions = document.createElement('div');
+  actions.className = 'image-actions';
+
+  const downloadLink = document.createElement('a');
+  downloadLink.href = imgSrc;
+  downloadLink.download = filename;
+  downloadLink.className = 'download-link';
+  downloadLink.textContent = '⬇ İndir';
+  actions.appendChild(downloadLink);
+
+  const openLink = document.createElement('a');
+  openLink.href = imgSrc;
+  openLink.target = '_blank';
+  openLink.rel = 'noopener';
+  openLink.className = 'download-link open-link';
+  openLink.textContent = '↗ Yeni sekmede aç';
+  actions.appendChild(openLink);
+
+  bubble.appendChild(actions);
 
   messagesEl.appendChild(bubble);
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
-function addTypingBubble() {
+function addTypingBubble(label) {
   emptyState.classList.add('hidden');
   const bubble = document.createElement('div');
-  bubble.className = 'msg assistant';
-  bubble.innerHTML = '<span class="typing-dots"><span></span><span></span><span></span></span>';
+  bubble.className = 'msg assistant typing';
+  bubble.innerHTML = '<span class="typing-dots"><span></span><span></span><span></span></span>'
+    + (label ? `<span class="typing-label">${label}</span>` : '');
   messagesEl.appendChild(bubble);
   messagesEl.scrollTop = messagesEl.scrollHeight;
   return bubble;
+}
+
+// ---- shared request helper (used by send + regenerate + retry) ----
+async function requestAssistantReply(apiMessages, file) {
+  chatBrandMark.classList.add('thinking');
+  const typingBubble = addTypingBubble();
+
+  try {
+    const payload = { token: getToken(), messages: apiMessages };
+    if (currentCategory !== 'auto') payload.preferred = currentCategory;
+    if (file) payload.file = file;
+
+    const data = await postJSON('/api/chat', payload);
+    history.push({ role: 'assistant', content: data.reply });
+
+    typingBubble.remove();
+    addMessage('assistant', data.reply, { modelLabel: data.model, isLatest: true, stream: true });
+    clearAttachment();
+  } catch (err) {
+    typingBubble.remove();
+    addMessage('error', err.message, { onRetry: () => requestAssistantReply(apiMessages, file) });
+
+    if (/oturum/i.test(err.message)) {
+      clearSession();
+      setTimeout(() => location.reload(), 1500);
+    }
+  } finally {
+    chatBrandMark.classList.remove('thinking');
+  }
+}
+
+function regenerate() {
+  if (history.length < 1 || history[history.length - 1].role !== 'assistant') return;
+
+  history.pop();
+  const bubbles = messagesEl.querySelectorAll('.msg.assistant');
+  bubbles[bubbles.length - 1]?.remove();
+
+  requestAssistantReply([SYSTEM_PROMPT, ...history.slice(-20)], null);
 }
 
 // ---- send flows ----
@@ -573,36 +919,9 @@ async function sendChatMessage(text) {
   history.push({ role: 'user', content: text });
   addMessage('user', text, { attachment: attachmentForMessage });
 
-  chatBrandMark.classList.add('thinking');
-  const typingBubble = addTypingBubble();
-
-  try {
-    const payload = {
-      token: getToken(),
-      messages: [SYSTEM_PROMPT, ...history.slice(-20)],
-    };
-
-    if (attachedFile) {
-      payload.file = { mimeType: attachedFile.mimeType, data: attachedFile.base64 };
-    }
-
-    const data = await postJSON('/api/chat', payload);
-    history.push({ role: 'assistant', content: data.reply });
-
-    typingBubble.remove();
-    addMessage('assistant', data.reply, { modelLabel: data.model });
-  } catch (err) {
-    typingBubble.remove();
-    addMessage('error', err.message);
-
-    if (/oturum/i.test(err.message)) {
-      clearSession();
-      setTimeout(() => location.reload(), 1500);
-    }
-  } finally {
-    chatBrandMark.classList.remove('thinking');
-    clearAttachment();
-  }
+  const apiMessages = [SYSTEM_PROMPT, ...history.slice(-20)];
+  const file = attachedFile ? { mimeType: attachedFile.mimeType, data: attachedFile.base64 } : null;
+  await requestAssistantReply(apiMessages, file);
 }
 
 async function sendImageMessage(prompt) {
@@ -614,22 +933,23 @@ async function sendImageMessage(prompt) {
   addMessage('user', prompt, { attachment: attachmentForMessage });
 
   chatBrandMark.classList.add('thinking');
-  const typingBubble = addTypingBubble();
+  const typingBubble = addTypingBubble(isEdit ? 'Görsel düzenleniyor…' : 'Görsel oluşturuluyor…');
+
+  const payload = { token: getToken(), prompt };
+  if (isEdit) {
+    payload.image = { mimeType: attachedFile.mimeType, data: attachedFile.base64 };
+  }
 
   try {
-    const payload = { token: getToken(), prompt };
-    if (isEdit) {
-      payload.image = { mimeType: attachedFile.mimeType, data: attachedFile.base64 };
-    }
-
     const data = await postJSON('/api/image', payload);
 
     typingBubble.remove();
     const src = `data:${data.image.mimeType};base64,${data.image.data}`;
     addImageMessage(data.text || '', src, isEdit ? 'aliv-duzenlenmis.png' : 'aliv-gorsel.png');
+    clearAttachment();
   } catch (err) {
     typingBubble.remove();
-    addMessage('error', err.message);
+    addMessage('error', err.message, { onRetry: () => sendImageMessage(prompt) });
 
     if (/oturum/i.test(err.message)) {
       clearSession();
@@ -637,7 +957,6 @@ async function sendImageMessage(prompt) {
     }
   } finally {
     chatBrandMark.classList.remove('thinking');
-    clearAttachment();
   }
 }
 
@@ -650,8 +969,10 @@ chatForm.addEventListener('submit', async (e) => {
   chatInput.value = '';
   autoResize();
   sendBtn.disabled = true;
+  sendBtn.classList.add('pop');
+  setTimeout(() => sendBtn.classList.remove('pop'), 320);
 
-  if (currentMode === 'image') {
+  if (currentCategory === 'image') {
     await sendImageMessage(text);
   } else {
     await sendChatMessage(text);

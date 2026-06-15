@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>ALIV AI</title>
-  <meta name="description" content="ALIV AI — birden fazla ücretsiz yapay zeka modelinin otomatik harmanlanmasıyla çalışan, kâr amacı gütmeyen sohbet platformu." />
+  <meta name="description" content="ALIV AI — birden fazla ücretsiz yapay zeka modelinin otomatik harmanlanmasıyla çalışan, kâr amacı gütmeyen özel sohbet platformu." />
   <link rel="icon" type="image/png" href="assets/icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -15,86 +15,106 @@
 
   <!-- ================= INTRO ANIMATION ================= -->
   <div id="logo-intro" class="logo-intro" aria-hidden="true">
-    <div class="intro-tiles" id="intro-tiles"></div>
+    <div class="intro-bg"></div>
+    <div class="intro-stage" id="intro-stage">
+      <div class="intro-tiles" id="intro-tiles"></div>
+      <div class="intro-word">A L I V</div>
+    </div>
   </div>
 
   <!-- ================= AUTH VIEW ================= -->
   <main id="auth-view" class="view">
-    <div class="auth-card">
-      <div class="brand">
-        <img src="assets/icon.png" alt="ALIV" class="brand-mark" id="brand-mark" />
-        <span class="brand-word">ALIV</span>
+    <div class="auth-center">
+      <div class="auth-card">
+        <div class="brand">
+          <img src="assets/icon.png" alt="ALIV" class="brand-mark" id="brand-mark" />
+          <span class="brand-word">ALIV</span>
+        </div>
+        <p class="auth-tagline">Ücretsiz yapay zeka modelleriyle sohbet edin</p>
+
+        <div class="auth-tabs" role="tablist">
+          <button class="tab active" data-tab="login" type="button">Giriş Yap</button>
+          <button class="tab" data-tab="register" type="button">Kayıt Ol</button>
+        </div>
+
+        <!-- ---- LOGIN ---- -->
+        <form id="login-form" class="auth-form active" autocomplete="off">
+          <div class="field">
+            <label for="login-username">Kullanıcı adı</label>
+            <input type="text" id="login-username" name="username" autocomplete="username" placeholder="kullaniciadi" required />
+          </div>
+
+          <button type="button" id="login-step1-btn" class="primary-btn">Giriş Yap</button>
+
+          <div id="login-otp-wrap" class="otp-wrap">
+            <div class="field">
+              <label>Authenticator kodu</label>
+              <div class="otp-group" id="login-otp-group" role="group" aria-label="6 haneli doğrulama kodu">
+                <input type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="otp-box" aria-label="Hane 1" data-idx="0" />
+                <input type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="otp-box" aria-label="Hane 2" data-idx="1" />
+                <input type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="otp-box" aria-label="Hane 3" data-idx="2" />
+                <input type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="otp-box" aria-label="Hane 4" data-idx="3" />
+                <input type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="otp-box" aria-label="Hane 5" data-idx="4" />
+                <input type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="otp-box" aria-label="Hane 6" data-idx="5" />
+              </div>
+              <p class="hint">6 hane girilince otomatik doğrulanır</p>
+            </div>
+            <button type="submit" class="secondary-btn">Doğrula ve Giriş Yap</button>
+          </div>
+
+          <p class="form-msg" id="login-msg"></p>
+        </form>
+
+        <!-- ---- REGISTER ---- -->
+        <form id="register-form" class="auth-form" autocomplete="off">
+
+          <!-- step 1: choose username -->
+          <div class="reg-step active" data-step="1">
+            <div class="field">
+              <label for="register-username">Kullanıcı adı seç</label>
+              <input type="text" id="register-username" name="username" autocomplete="off" placeholder="kullaniciadi" maxlength="20" required />
+              <span class="hint">3-20 karakter, sadece harf, rakam ve _</span>
+            </div>
+            <button type="button" id="register-step1-btn" class="primary-btn">Devam Et</button>
+          </div>
+
+          <!-- step 2: scan QR -->
+          <div class="reg-step" data-step="2">
+            <p class="step-title">Google Authenticator ile QR kodu tarayın</p>
+            <div class="qr-box">
+              <img id="register-qr" src="" alt="QR kod" />
+            </div>
+            <details class="manual-key">
+              <summary>QR okutamıyorum, anahtarı manuel gireceğim</summary>
+              <code id="register-secret"></code>
+            </details>
+            <button type="button" id="register-step2-btn" class="primary-btn">Taradım, devam et</button>
+          </div>
+
+          <!-- step 3: confirm code -->
+          <div class="reg-step" data-step="3">
+            <p class="step-title">Authenticator uygulamasındaki 6 haneli kodu girin</p>
+            <div class="otp-group" id="register-otp-group" role="group" aria-label="6 haneli doğrulama kodu">
+              <input type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="otp-box" aria-label="Hane 1" data-idx="0" />
+              <input type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="otp-box" aria-label="Hane 2" data-idx="1" />
+              <input type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="otp-box" aria-label="Hane 3" data-idx="2" />
+              <input type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="otp-box" aria-label="Hane 4" data-idx="3" />
+              <input type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="otp-box" aria-label="Hane 5" data-idx="4" />
+              <input type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="otp-box" aria-label="Hane 6" data-idx="5" />
+            </div>
+            <p class="hint">6 hane girilince otomatik doğrulanır</p>
+            <button type="submit" class="secondary-btn">Hesabı Doğrula ve Giriş Yap</button>
+          </div>
+
+          <p class="form-msg" id="register-msg"></p>
+        </form>
+
       </div>
-      <p class="auth-tagline">Ücretsiz yapay zeka modelleriyle sohbet edin</p>
-
-      <div class="auth-tabs" role="tablist">
-        <button class="tab active" data-tab="login" type="button">Giriş Yap</button>
-        <button class="tab" data-tab="register" type="button">Kayıt Ol</button>
-      </div>
-
-      <!-- ---- LOGIN ---- -->
-      <form id="login-form" class="auth-form active" autocomplete="off">
-        <div class="field">
-          <label for="login-username">Kullanıcı adı</label>
-          <input type="text" id="login-username" name="username" autocomplete="username" placeholder="kullaniciadi" required />
-        </div>
-
-        <button type="button" id="login-step1-btn" class="primary-btn">Giriş Yap</button>
-
-        <div id="login-otp-wrap" class="otp-wrap">
-          <div class="field">
-            <label for="login-otp">Authenticator kodu</label>
-            <input type="text" id="login-otp" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="000000" class="otp-input" />
-          </div>
-          <button type="submit" class="primary-btn">Doğrula ve Giriş Yap</button>
-        </div>
-
-        <p class="form-msg" id="login-msg"></p>
-      </form>
-
-      <!-- ---- REGISTER ---- -->
-      <form id="register-form" class="auth-form" autocomplete="off">
-
-        <!-- step 1: choose username -->
-        <div class="reg-step active" data-step="1">
-          <div class="field">
-            <label for="register-username">Kullanıcı adı seç</label>
-            <input type="text" id="register-username" name="username" autocomplete="off" placeholder="kullaniciadi" maxlength="20" required />
-            <span class="hint">3-20 karakter, sadece harf, rakam ve _</span>
-          </div>
-          <button type="button" id="register-step1-btn" class="primary-btn">Devam Et</button>
-        </div>
-
-        <!-- step 2: scan QR -->
-        <div class="reg-step" data-step="2">
-          <p class="step-title">Google Authenticator ile QR kodu tarayın</p>
-          <div class="qr-box">
-            <img id="register-qr" src="" alt="QR kod" />
-          </div>
-          <details class="manual-key">
-            <summary>QR okutamıyorum, anahtarı manuel gireceğim</summary>
-            <code id="register-secret"></code>
-          </details>
-          <button type="button" id="register-step2-btn" class="primary-btn">Taradım, devam et</button>
-        </div>
-
-        <!-- step 3: confirm code -->
-        <div class="reg-step" data-step="3">
-          <p class="step-title">Authenticator uygulamasındaki 6 haneli kodu girin</p>
-          <div class="field">
-            <input type="text" id="register-otp" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="000000" class="otp-input" />
-          </div>
-          <button type="submit" class="primary-btn">Hesabı Doğrula ve Giriş Yap</button>
-        </div>
-
-        <p class="form-msg" id="register-msg"></p>
-      </form>
-
     </div>
 
-    <footer class="site-footer">
-      <button type="button" class="info-link" id="info-link-auth">Hakkında ve aktif modeller</button>
-      <p class="copyright">© 2026 ALIV — Tüm hakları saklıdır.</p>
+    <footer class="app-footer">
+      <p><span class="copyright">© 2026 ALIV. All rights reserved.</span> · Kâr amacı gütmeyen, ücretsiz AI platformu</p>
+      <button type="button" class="info-link" id="info-link-auth">Aktif modeller ve detaylar</button>
     </footer>
   </main>
 
@@ -106,15 +126,39 @@
         <span class="brand-word">ALIV</span>
       </div>
 
-      <div class="mode-toggle" role="tablist">
-        <button class="mode-btn active" data-mode="chat" type="button" title="Sohbet">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-          <span>Sohbet</span>
+      <div class="model-selector" id="model-selector">
+        <button class="model-selector-btn" id="model-selector-btn" type="button" aria-haspopup="listbox" aria-expanded="false">
+          <span class="msel-icon" id="msel-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 14 9 21 12 14 15 12 22 10 15 3 12 10 9 Z"/></svg></span>
+          <span class="msel-label" id="msel-label">Otomatik</span>
+          <svg class="msel-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
-        <button class="mode-btn" data-mode="image" type="button" title="Görsel">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-          <span>Görsel</span>
-        </button>
+        <span class="auto-badge" id="auto-badge">✨ Otomatik seçili</span>
+        <div class="model-selector-panel hidden" id="model-selector-panel" role="listbox">
+          <button class="msel-option active" data-category="auto" role="option" aria-selected="true" type="button">
+            <span class="msel-opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 14 9 21 12 14 15 12 22 10 15 3 12 10 9 Z"/></svg></span>
+            <span class="msel-opt-text"><span class="msel-option-title">Otomatik</span><span class="msel-option-desc">En uygun model otomatik seçilir</span></span>
+          </button>
+          <button class="msel-option" data-category="fast" role="option" aria-selected="false" type="button">
+            <span class="msel-opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg></span>
+            <span class="msel-opt-text"><span class="msel-option-title">Hızlı</span><span class="msel-option-desc">En hızlı yanıt veren modeller</span></span>
+          </button>
+          <button class="msel-option" data-category="quality" role="option" aria-selected="false" type="button">
+            <span class="msel-opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l4 6-10 12L2 9Z"/><path d="M11 3 8 9l4 13 4-13-3-6"/><path d="M2 9h20"/></svg></span>
+            <span class="msel-opt-text"><span class="msel-option-title">Kalite</span><span class="msel-option-desc">En güçlü ve yetenekli modeller</span></span>
+          </button>
+          <button class="msel-option" data-category="code" role="option" aria-selected="false" type="button">
+            <span class="msel-opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
+            <span class="msel-opt-text"><span class="msel-option-title">Kod</span><span class="msel-option-desc">Programlama için optimize edilmiş</span></span>
+          </button>
+          <button class="msel-option" data-category="vision" role="option" aria-selected="false" type="button">
+            <span class="msel-opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span>
+            <span class="msel-opt-text"><span class="msel-option-title">Görsel Anlama</span><span class="msel-option-desc">Görsel/dosya okuyabilen modeller</span></span>
+          </button>
+          <button class="msel-option" data-category="image" role="option" aria-selected="false" type="button">
+            <span class="msel-opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></span>
+            <span class="msel-opt-text"><span class="msel-option-title">Görsel Oluştur</span><span class="msel-option-desc">Yeni görsel oluştur veya düzenle</span></span>
+          </button>
+        </div>
       </div>
 
       <div class="header-actions">
@@ -135,6 +179,30 @@
         <img src="assets/icon.png" alt="" class="brand-mark empty-mark" />
         <h1>Bugün nasıl yardımcı olabilirim?</h1>
         <p>Mesajınızı yazın — en uygun yapay zeka modeli otomatik olarak seçilir.</p>
+
+        <div class="onboarding-grid" id="onboarding-grid">
+          <button type="button" class="onboarding-card" data-prompt="Şunun hakkında yaratıcı fikirler üret: ">
+            <span class="onboarding-icon">💡</span>
+            <h3>Fikir üret</h3>
+            <p>Bir konu hakkında yaratıcı fikirler al</p>
+          </button>
+          <button type="button" class="onboarding-card" data-prompt="Eklediğim dosyayı özetler misin?" data-hint-attach="true">
+            <span class="onboarding-icon">📝</span>
+            <h3>Özetle / Açıkla</h3>
+            <p>Bir dosya ekle, AI özetlesin</p>
+          </button>
+          <button type="button" class="onboarding-card" data-category="code" data-prompt="Python ile şunu yapan bir fonksiyon yaz: ">
+            <span class="onboarding-icon">💻</span>
+            <h3>Kod yaz</h3>
+            <p>Kod modu otomatik seçilir</p>
+          </button>
+          <button type="button" class="onboarding-card" data-category="image" data-prompt="">
+            <span class="onboarding-icon">🎨</span>
+            <h3>Görsel oluştur</h3>
+            <p>Görsel modu otomatik seçilir</p>
+          </button>
+        </div>
+
         <div class="model-badges" id="model-badges"></div>
       </div>
     </section>
@@ -156,12 +224,16 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
       </button>
     </form>
+
+    <footer class="app-footer app-footer-chat">
+      <p><span class="copyright">© 2026 ALIV. All rights reserved.</span> · Kâr amacı gütmeyen ücretsiz AI platformu</p>
+    </footer>
   </main>
 
   <!-- ================= INFO MODAL ================= -->
   <div id="info-modal" class="modal hidden">
     <div class="modal-backdrop" id="info-modal-backdrop"></div>
-    <div class="modal-card">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-label="Hakkında">
       <button class="modal-close" id="info-modal-close" aria-label="Kapat" type="button">×</button>
 
       <div class="brand brand-sm">
@@ -171,15 +243,18 @@
 
       <p class="about-text">
         Bu sayfa, herhangi bir kâr amacı gütmeden; son kullanıcıya, her bir yapay zeka için
-        ayrı bir uygulama veya hesap gerektirmeden, entegre yapay zeka modellerinin
-        harmanlanmasıyla tamamen ücretsiz olarak kullanıma sunulmuştur.
+        ayrı bir uygulama veya hesap gerektirmeden, entegre ücretsiz yapay zeka modellerinin
+        harmanlanmasıyla tamamen ücretsiz olarak sunulmuştur.
       </p>
 
       <h3 class="modal-subtitle">Aktif modeller</h3>
       <div class="model-badges" id="info-model-badges"></div>
-      <p class="modal-note">En uygun model her mesaj için otomatik seçilir; bir model yanıt veremezse sistem diğerine geçer.</p>
-
-      <p class="copyright">© 2026 ALIV — Tüm hakları saklıdır.</p>
+      <p class="modal-note">
+        <strong>Otomatik</strong> modda en uygun model her mesaj için otomatik seçilir; bir
+        model yanıt veremezse sistem diğerine geçer. Üstteki menüden <strong>Hızlı, Kalite
+        veya Kod</strong> moduna geçerek önceliği değiştirebilir, <strong>Görsel</strong>
+        modunda yeni görsel oluşturabilirsiniz.
+      </p>
     </div>
   </div>
 
