@@ -1,24 +1,39 @@
 import { verifyToken } from './_session.js';
 
-// Image generation AND editing via Gemini's image-capable model
-// ("Nano Banana"):
+// Image generation AND editing via Gemini's image-capable ("Nano Banana")
+// models:
 // - No `image` field in the request  -> text-to-image generation.
 // - `image` field provided           -> edit/transform that image.
 //
-// Google sometimes promotes "-preview" model ids to a stable name.
-// Try the current stable id first, then the older preview alias as
-// a fallback so this keeps working through that kind of transition.
-// See https://ai.google.dev/gemini-api/docs/image-generation
-const IMAGE_MODELS = ['gemini-2.5-flash-image', 'gemini-2.5-flash-image-preview'];
+// We use TWO different model families with separate per-model quotas on
+// Gemini's free tier, ordered differently per tier. This both gives a real
+// "fast" vs "quality" choice AND makes the feature resilient: if one model
+// hits its rate limit, the other (separate quota bucket) still works.
+//
+// gemini-2.5-flash-image       = "Nano Banana"   (GA, strong contextual quality)
+// gemini-3.1-flash-image-preview = "Nano Banana 2" (newer, optimized for speed)
+//
+// If a model id changes again, check
+// https://ai.google.dev/gemini-api/docs/image-generation and update below.
+const IMAGE_CHAINS = {
+  quality: ['gemini-2.5-flash-image', 'gemini-3.1-flash-image-preview', 'gemini-2.5-flash-image-preview'],
+  fast: ['gemini-3.1-flash-image-preview', 'gemini-2.5-flash-image', 'gemini-2.5-flash-image-preview'],
+};
 
-const TIMEOUT_MS = 28000; // keep 2 attempts within Vercel's 60s maxDuration
+const IMAGE_MODEL_LABELS = {
+  'gemini-2.5-flash-image': 'Nano Banana (Kalite)',
+  'gemini-3.1-flash-image-preview': 'Nano Banana 2 (Hızlı)',
+  'gemini-2.5-flash-image-preview': 'Nano Banana (Önizleme)',
+};
+
+const TIMEOUT_MS = 18000; // 3 attempts x 18s stays within Vercel's 60s maxDuration with margin
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { token, prompt, image } = req.body || {};
+  const { token, prompt, image, tier } = req.body || {};
 
   const username = verifyToken(token);
   if (!username) {
@@ -48,16 +63,21 @@ export default async function handler(req, res) {
     generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
   };
 
+  const chain = IMAGE_CHAINS[tier] || IMAGE_CHAINS.quality;
   const errors = [];
 
-  // 2) Try each known model id in order. A model that responds but
-  //    returns no image (e.g. refused the prompt) is recorded and we
-  //    move on; a hard API/network error is also recorded.
-  for (const model of IMAGE_MODELS) {
+  // 2) Try each model in the chosen tier's chain. A model that responds but
+  //    returns no image (e.g. refused the prompt) is recorded and we move
+  //    on; a hard API/network error is also recorded and we try the next.
+  for (const model of chain) {
     try {
       const result = await callImageModel(model, apiKey, body);
       if (result.image) {
-        return res.status(200).json({ image: result.image, text: result.text });
+        return res.status(200).json({
+          image: result.image,
+          text: result.text,
+          model: IMAGE_MODEL_LABELS[model] || model,
+        });
       }
       errors.push(`${model}: ${result.refusal}`);
     } catch (err) {
@@ -113,7 +133,7 @@ function friendlyError(errors) {
     return 'Görsel servisi zaman aşımına uğradı (istek çok uzun sürdü). Lütfen tekrar deneyin.';
   }
   if (/429|quota|rate.?limit|resource.?exhausted/i.test(all)) {
-    return 'Görsel modeli şu anda istek limitine ulaştı (ücretsiz kotanın sonu olabilir). Lütfen birkaç dakika sonra tekrar deneyin.';
+    return 'Görsel modelleri şu anda istek limitine ulaştı (ücretsiz kotanın sonu olabilir). Lütfen birkaç dakika sonra tekrar deneyin veya diğer kaliteyi (Hızlı/Kaliteli) deneyin.';
   }
   if (/api.?key|permission|unauthorized|403|401/i.test(all)) {
     return 'Gemini API anahtarı geçersiz veya görsel modeline erişim izni yok. Lütfen GEMINI_API_KEY değerini kontrol edin.';

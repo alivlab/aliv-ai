@@ -4,7 +4,17 @@
 
 const TOKEN_KEY = 'aliv_token';
 const USER_KEY = 'aliv_username';
-const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
+// Images: user can pick up to 25MB — we compress/resize client-side before
+// sending, so the actual upload stays well under Vercel's 4.5MB body limit.
+const MAX_IMAGE_PICK_SIZE = 25 * 1024 * 1024; // 25MB
+// Non-image files (PDF/text) can't be compressed, so keep a safe raw cap
+// (~3MB raw ≈ 4MB base64, comfortably under the 4.5MB body limit).
+const MAX_DOC_SIZE = 3 * 1024 * 1024; // 3MB
+// Images already at/under this size and within reasonable dimensions are
+// sent as-is (no need to re-encode small files).
+const SKIP_COMPRESSION_SIZE = 1.5 * 1024 * 1024; // 1.5MB
+const COMPRESS_MAX_DIM = 1568; // Gemini's recommended max input dimension
+const COMPRESS_QUALITY = 0.85;
 
 const AUTH_VIEW = document.getElementById('auth-view');
 const CHAT_VIEW = document.getElementById('chat-view');
@@ -88,6 +98,39 @@ function readFileAsDataUrl(file) {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+// Resize + re-encode large images client-side so a 25MB phone photo turns
+// into a small JPEG before it ever hits the network. Small images are
+// passed through untouched. Returns { dataUrl, mimeType }.
+async function compressImage(file) {
+  const dataUrl = await readFileAsDataUrl(file);
+
+  const img = await new Promise((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error('Görsel okunamadı'));
+    el.src = dataUrl;
+  });
+
+  const { width, height } = img;
+  const withinDim = width <= COMPRESS_MAX_DIM && height <= COMPRESS_MAX_DIM;
+
+  if (withinDim && file.size <= SKIP_COMPRESSION_SIZE) {
+    return { dataUrl, mimeType: file.type || 'image/jpeg' };
+  }
+
+  const scale = Math.min(1, COMPRESS_MAX_DIM / Math.max(width, height));
+  const targetW = Math.max(1, Math.round(width * scale));
+  const targetH = Math.max(1, Math.round(height * scale));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = targetW;
+  canvas.height = targetH;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, targetW, targetH);
+
+  return { dataUrl: canvas.toDataURL('image/jpeg', COMPRESS_QUALITY), mimeType: 'image/jpeg' };
 }
 
 // ============================================================
@@ -503,6 +546,18 @@ const mselLabel = document.getElementById('msel-label');
 const mselOptions = document.querySelectorAll('.msel-option');
 const autoBadge = document.getElementById('auto-badge');
 
+// image fast/quality toggle
+const imageTierToggle = document.getElementById('image-tier-toggle');
+const tierButtons = document.querySelectorAll('.tier-btn');
+let imageTier = 'quality'; // 'quality' | 'fast'
+
+tierButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    imageTier = btn.dataset.tier;
+    tierButtons.forEach((b) => b.classList.toggle('active', b === btn));
+  });
+});
+
 let history = []; // { role: 'user' | 'assistant', content: string }
 let attachedFile = null; // { name, mimeType, base64, previewDataUrl }
 let currentCategory = 'auto'; // 'auto' | 'fast' | 'quality' | 'code' | 'image'
@@ -568,6 +623,8 @@ function selectCategory(category) {
   updateAutoBadge();
   closeModelSelector();
 
+  imageTierToggle.classList.toggle('hidden', category !== 'image');
+
   if (category === 'image' && attachedFile && !attachedFile.mimeType.startsWith('image/')) {
     clearAttachment();
   }
@@ -623,26 +680,39 @@ fileInput.addEventListener('change', async () => {
   fileInput.value = '';
   if (!file) return;
 
-  if (file.size > MAX_FILE_SIZE) {
-    addMessage('error', 'Dosya çok büyük. En fazla 4MB destekleniyor.');
+  const isImage = file.type.startsWith('image/');
+
+  if (isImage && file.size > MAX_IMAGE_PICK_SIZE) {
+    addMessage('error', 'Görsel çok büyük. En fazla 25MB destekleniyor.');
     return;
   }
 
-  if (currentCategory === 'image' && !file.type.startsWith('image/')) {
-    addMessage('error', 'Görsel modunda sadece resim dosyası ekleyebilirsiniz.');
+  if (!isImage && file.size > MAX_DOC_SIZE) {
+    addMessage('error', 'Dosya çok büyük. En fazla 3MB destekleniyor.');
+    return;
+  }
+
+  if (currentCategory === 'image' && !isImage) {
+    addMessage('error', 'Görsel oluşturma/düzenleme modunda sadece resim dosyası ekleyebilirsiniz.');
     return;
   }
 
   try {
-    const dataUrl = await readFileAsDataUrl(file);
-    const base64 = dataUrl.split(',')[1];
+    let base64, previewDataUrl, mimeType;
 
-    attachedFile = {
-      name: file.name,
-      mimeType: file.type || 'application/octet-stream',
-      base64,
-      previewDataUrl: file.type.startsWith('image/') ? dataUrl : null,
-    };
+    if (isImage) {
+      const compressed = await compressImage(file);
+      base64 = compressed.dataUrl.split(',')[1];
+      previewDataUrl = compressed.dataUrl;
+      mimeType = compressed.mimeType;
+    } else {
+      const dataUrl = await readFileAsDataUrl(file);
+      base64 = dataUrl.split(',')[1];
+      previewDataUrl = null;
+      mimeType = file.type || 'application/octet-stream';
+    }
+
+    attachedFile = { name: file.name, mimeType, base64, previewDataUrl };
 
     attachmentName.textContent = file.name;
     if (attachedFile.previewDataUrl) {
@@ -819,11 +889,18 @@ function addMessage(role, content, opts = {}) {
   return bubble;
 }
 
-function addImageMessage(caption, imgSrc, filename) {
+function addImageMessage(caption, imgSrc, filename, modelLabel) {
   emptyState.classList.add('hidden');
 
   const bubble = document.createElement('div');
   bubble.className = 'msg image-result';
+
+  if (modelLabel) {
+    const tag = document.createElement('span');
+    tag.className = 'model-tag';
+    tag.innerHTML = `<span class="dot"></span>${modelLabel}`;
+    bubble.appendChild(tag);
+  }
 
   if (caption) {
     const p = document.createElement('p');
@@ -935,7 +1012,7 @@ async function sendImageMessage(prompt) {
   chatBrandMark.classList.add('thinking');
   const typingBubble = addTypingBubble(isEdit ? 'Görsel düzenleniyor…' : 'Görsel oluşturuluyor…');
 
-  const payload = { token: getToken(), prompt };
+  const payload = { token: getToken(), prompt, tier: imageTier };
   if (isEdit) {
     payload.image = { mimeType: attachedFile.mimeType, data: attachedFile.base64 };
   }
@@ -945,7 +1022,7 @@ async function sendImageMessage(prompt) {
 
     typingBubble.remove();
     const src = `data:${data.image.mimeType};base64,${data.image.data}`;
-    addImageMessage(data.text || '', src, isEdit ? 'aliv-duzenlenmis.png' : 'aliv-gorsel.png');
+    addImageMessage(data.text || '', src, isEdit ? 'aliv-duzenlenmis.png' : 'aliv-gorsel.png', data.model);
     clearAttachment();
   } catch (err) {
     typingBubble.remove();
