@@ -1,19 +1,17 @@
-// Static list of models ALIV AI can use, shown to the user as
-// informational badges. Keep this in sync with api/chat.js.
-const MODELS = [
-  { label: 'Gemini 2.0 Flash', provider: 'Google' },
-  { label: 'Llama 3.3 70B', provider: 'Groq' },
-  { label: 'Llama 3.1 8B', provider: 'Groq' },
-  { label: 'DeepSeek V3.1', provider: 'OpenRouter' },
-  { label: 'Qwen 2.5 72B', provider: 'OpenRouter' },
-  { label: 'Gemma 2 9B', provider: 'OpenRouter' },
-  { label: 'Mistral 7B', provider: 'OpenRouter' },
-  { label: 'Gemini 1.5 Flash', provider: 'Google' },
-];
+import { MODEL_REGISTRY, CHAINS, MODEL_CATEGORIES, IMAGE_MODEL_INFO } from './providers.js';
 
+// Static info endpoint — lets the frontend show "which models are
+// active" and render the manual model-category selector, all
+// derived from the single registry in providers.js.
 export default function handler(req, res) {
+  const models = CHAINS.auto.map((id) => {
+    const m = MODEL_REGISTRY[id];
+    return { label: m.label, provider: m.provider };
+  });
+
   res.status(200).json({
-    models: MODELS,
-    image: { label: 'Görsel Oluşturma & Düzenleme', provider: 'Google Gemini' },
+    models,
+    categories: MODEL_CATEGORIES,
+    image: IMAGE_MODEL_INFO,
   });
 }

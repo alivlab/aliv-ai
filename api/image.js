@@ -1,33 +1,55 @@
 import { verifyToken } from './_session.js';
 
-// Image generation AND editing via Gemini's image-capable ("Nano Banana")
-// models:
-// - No `image` field in the request  -> text-to-image generation.
-// - `image` field provided           -> edit/transform that image.
+// =================================================================
+// ALIV AI — Görsel Oluşturma / Düzenleme
+// =================================================================
 //
-// We use TWO different model families with separate per-model quotas on
-// Gemini's free tier, ordered differently per tier. This both gives a real
-// "fast" vs "quality" choice AND makes the feature resilient: if one model
-// hits its rate limit, the other (separate quota bucket) still works.
+// Sağlayıcı zinciri (yukarıdan aşağıya, ilk başarılı sonuç döner):
 //
-// gemini-2.5-flash-image       = "Nano Banana"   (GA, strong contextual quality)
-// gemini-3.1-flash-image-preview = "Nano Banana 2" (newer, optimized for speed)
+//  1. Cloudflare Workers AI  [ÖNERİLEN — ~10k istek/gün ücretsiz]
+//     FLUX.1-schnell (hızlı, text-to-image)
+//     FLUX.2-klein-9b (kaliteli, text-to-image + editing)
+//     Env: CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN
 //
-// If a model id changes again, check
-// https://ai.google.dev/gemini-api/docs/image-generation and update below.
-const IMAGE_CHAINS = {
-  quality: ['gemini-2.5-flash-image', 'gemini-3.1-flash-image-preview', 'gemini-2.5-flash-image-preview'],
-  fast: ['gemini-3.1-flash-image-preview', 'gemini-2.5-flash-image', 'gemini-2.5-flash-image-preview'],
+//  2. Together AI  [ÖNERİLEN YEDEK — ücretsiz FLUX.1-schnell-Free]
+//     FLUX.1-schnell-Free endpoint (sadece text-to-image)
+//     Env: TOGETHER_API_KEY
+//
+//  3. Gemini ("Nano Banana" ailesi)  [YEDEK — ~500 istek/gün, ~10 RPM]
+//     gemini-2.5-flash-image + gemini-3.1-flash-image-preview
+//     Env: GEMINI_API_KEY
+//     NOT: RPM limiti çok düşük, tek sağlayıcı olarak güvenilmez.
+//
+// Vercel maxDuration bütçesi (vercel.json: 60s):
+//   CF ~20s + Together ~18s + Gemini ~17s ≈ 55s (güvenli marj var)
+// =================================================================
+
+// --- Cloudflare ---
+const CF_FAST    = '@cf/black-forest-labs/flux-1-schnell';
+const CF_QUALITY = '@cf/black-forest-labs/flux-2-klein-9b';
+
+// --- Together AI ---
+const TOGETHER_MODEL = 'black-forest-labs/FLUX.1-schnell-Free';
+
+// --- Gemini ---
+const GEMINI_QUALITY_CHAIN = ['gemini-2.5-flash-image', 'gemini-3.1-flash-image-preview'];
+const GEMINI_FAST_CHAIN    = ['gemini-3.1-flash-image-preview', 'gemini-2.5-flash-image'];
+
+// --- Model display labels ---
+const LABELS = {
+  [CF_FAST]:            'FLUX.1 Schnell (Hızlı)',
+  [CF_QUALITY]:         'FLUX.2 Klein (Kaliteli)',
+  [TOGETHER_MODEL]:     'FLUX.1 Schnell (Together, Yedek)',
+  'gemini-2.5-flash-image':          'Gemini Nano Banana (Yedek)',
+  'gemini-3.1-flash-image-preview':  'Gemini Nano Banana 2 (Yedek)',
 };
 
-const IMAGE_MODEL_LABELS = {
-  'gemini-2.5-flash-image': 'Nano Banana (Kalite)',
-  'gemini-3.1-flash-image-preview': 'Nano Banana 2 (Hızlı)',
-  'gemini-2.5-flash-image-preview': 'Nano Banana (Önizleme)',
-};
+// --- Timeouts ---
+const CF_MS      = 20000; // Cloudflare is fast
+const TOGETHER_MS = 18000;
+const GEMINI_MS  = 16000; // 2 attempts × 16s fits under budget
 
-const TIMEOUT_MS = 18000; // 3 attempts x 18s stays within Vercel's 60s maxDuration with margin
-
+// =================================================================
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -35,113 +57,301 @@ export default async function handler(req, res) {
 
   const { token, prompt, image, tier } = req.body || {};
 
+  // --- Auth ---
   const username = verifyToken(token);
   if (!username) {
     return res.status(401).json({ error: 'Oturum süresi doldu. Lütfen tekrar giriş yapın.' });
   }
 
-  if (!prompt || !prompt.trim()) {
+  // --- Input ---
+  if (!prompt?.trim()) {
     return res.status(400).json({ error: 'Lütfen bir görsel tanımı yazın.' });
   }
 
-  // 1) API key missing — fail fast with a clear, actionable message.
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
+  // --- Keys ---
+  const cfAccount  = process.env.CLOUDFLARE_ACCOUNT_ID;
+  const cfToken    = process.env.CLOUDFLARE_API_TOKEN;
+  const togetherKey = process.env.TOGETHER_API_KEY;
+  const geminiKey  = process.env.GEMINI_API_KEY;
+
+  const hasCF      = !!(cfAccount && cfToken);
+  const hasTogether = !!togetherKey;
+  const hasGemini  = !!geminiKey;
+
+  if (!hasCF && !hasTogether && !hasGemini) {
     return res.status(500).json({
-      error: 'Görsel oluşturma yapılandırılmamış: GEMINI_API_KEY ortam değişkeni tanımlı değil. ' +
-        'Vercel proje ayarlarından (Settings → Environment Variables) ekleyip yeniden deploy edin.',
+      error:
+        'Görsel oluşturma için hiçbir API anahtarı yapılandırılmamış.\n\n' +
+        'En az birini Vercel → Settings → Environment Variables\'a ekleyin:\n' +
+        '• CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN  (ücretsiz, önerilen)\n' +
+        '• TOGETHER_API_KEY  (ücretsiz FLUX, iyi yedek)\n' +
+        '• GEMINI_API_KEY  (sınırlı, son çare)',
     });
   }
 
+  const errors = [];
+  const isEdit = !!(image?.data && image?.mimeType);
+
+  // ─────────────────────────────────────────────────────────────
+  // 1) Cloudflare Workers AI
+  // ─────────────────────────────────────────────────────────────
+  if (hasCF) {
+    try {
+      const cfResult = await callCloudflare({
+        account: cfAccount,
+        token: cfToken,
+        prompt,
+        image,
+        tier,
+        isEdit,
+      });
+      if (cfResult.image) {
+        return res.status(200).json(cfResult);
+      }
+      errors.push(`cf: ${cfResult.refusal}`);
+    } catch (err) {
+      errors.push(`cf: ${err.message}`);
+      console.error('[image] CF error:', err.message);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // 2) Together AI (sadece text-to-image, editing desteklenmiyor)
+  // ─────────────────────────────────────────────────────────────
+  if (hasTogether && !isEdit) {
+    try {
+      const tResult = await callTogether({ apiKey: togetherKey, prompt });
+      if (tResult.image) {
+        return res.status(200).json(tResult);
+      }
+      errors.push(`together: ${tResult.refusal}`);
+    } catch (err) {
+      errors.push(`together: ${err.message}`);
+      console.error('[image] Together error:', err.message);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // 3) Gemini fallback
+  // ─────────────────────────────────────────────────────────────
+  if (hasGemini) {
+    const chain = tier === 'fast' ? GEMINI_FAST_CHAIN : GEMINI_QUALITY_CHAIN;
+    for (const model of chain) {
+      try {
+        const gResult = await callGemini({ apiKey: geminiKey, model, prompt, image });
+        if (gResult.image) {
+          return res.status(200).json(gResult);
+        }
+        errors.push(`${model}: ${gResult.refusal}`);
+      } catch (err) {
+        errors.push(`${model}: ${err.message}`);
+        console.error('[image] Gemini error:', model, err.message);
+      }
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Tüm sağlayıcılar başarısız
+  // ─────────────────────────────────────────────────────────────
+  console.error('[image] All providers failed:', errors.join(' | '));
+  return res.status(502).json({
+    error: friendlyError(errors, { hasCF, hasTogether, hasGemini }),
+  });
+}
+
+// =================================================================
+// Cloudflare Workers AI
+// =================================================================
+async function callCloudflare({ account, token, prompt, image, tier, isEdit }) {
+  // Editing → her zaman kalite modeli (flux-2-klein supports image input via multipart)
+  const model = isEdit
+    ? CF_QUALITY
+    : (tier === 'fast' ? CF_FAST : CF_QUALITY);
+
+  const url = `https://api.cloudflare.com/client/v4/accounts/${account}/ai/run/${encodeURIComponent(model)}`;
+
+  let r;
+
+  if (model === CF_FAST) {
+    // flux-1-schnell: JSON body, returns { result: { image: "<base64>" } }
+    r = await fetchTimeout(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        prompt,
+        seed: Math.floor(Math.random() * 9_999_999),
+        steps: 4,
+      }),
+    }, CF_MS);
+  } else {
+    // flux-2-klein-9b: multipart/form-data, supports optional input_image_0
+    const form = new FormData();
+    form.append('prompt', prompt);
+    form.append('steps', isEdit ? '15' : '20');
+    form.append('width', '1024');
+    form.append('height', '1024');
+    if (isEdit) {
+      const buf = Buffer.from(image.data, 'base64');
+      form.append(
+        'input_image_0',
+        new Blob([buf], { type: image.mimeType }),
+        'input.jpg'
+      );
+    }
+    r = await fetchTimeout(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    }, CF_MS);
+  }
+
+  // Parse response
+  let data;
+  try { data = await r.json(); } catch { data = null; }
+
+  if (!r.ok || !data || data.success === false) {
+    const msg = data?.errors?.[0]?.message || `HTTP ${r.status}`;
+    throw new Error(msg);
+  }
+
+  const b64 = data.result?.image;
+  if (!b64) {
+    return { image: null, refusal: 'görsel döndürmedi' };
+  }
+
+  return {
+    image: { mimeType: 'image/jpeg', data: b64 },
+    text: '',
+    model: LABELS[model],
+  };
+}
+
+// =================================================================
+// Together AI — FLUX.1-schnell-Free
+// =================================================================
+async function callTogether({ apiKey, prompt }) {
+  const r = await fetchTimeout('https://api.together.xyz/v1/images/generations', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: TOGETHER_MODEL,
+      prompt,
+      width: 1024,
+      height: 1024,
+      steps: 4,
+      n: 1,
+      response_format: 'b64_json',
+    }),
+  }, TOGETHER_MS);
+
+  let data;
+  try { data = await r.json(); } catch { data = null; }
+
+  if (!r.ok || !data) {
+    const msg = data?.error?.message || data?.error || `HTTP ${r.status}`;
+    throw new Error(String(msg));
+  }
+
+  const b64 = data?.data?.[0]?.b64_json;
+  if (!b64) {
+    return { image: null, refusal: 'görsel döndürmedi' };
+  }
+
+  return {
+    image: { mimeType: 'image/png', data: b64 },
+    text: '',
+    model: LABELS[TOGETHER_MODEL],
+  };
+}
+
+// =================================================================
+// Gemini ("Nano Banana") — fallback
+// =================================================================
+async function callGemini({ apiKey, model, prompt, image }) {
   const parts = [{ text: prompt }];
   if (image?.data && image?.mimeType) {
     parts.push({ inlineData: { mimeType: image.mimeType, data: image.data } });
   }
 
-  const body = {
-    contents: [{ role: 'user', parts }],
-    generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
-  };
-
-  const chain = IMAGE_CHAINS[tier] || IMAGE_CHAINS.quality;
-  const errors = [];
-
-  // 2) Try each model in the chosen tier's chain. A model that responds but
-  //    returns no image (e.g. refused the prompt) is recorded and we move
-  //    on; a hard API/network error is also recorded and we try the next.
-  for (const model of chain) {
-    try {
-      const result = await callImageModel(model, apiKey, body);
-      if (result.image) {
-        return res.status(200).json({
-          image: result.image,
-          text: result.text,
-          model: IMAGE_MODEL_LABELS[model] || model,
-        });
-      }
-      errors.push(`${model}: ${result.refusal}`);
-    } catch (err) {
-      errors.push(`${model}: ${err.message}`);
-    }
-  }
-
-  console.error('Image generation failed:', errors.join(' | '));
-  return res.status(502).json({ error: friendlyError(errors) });
-}
-
-function fetchWithTimeout(url, options) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
-}
-
-async function callImageModel(model, apiKey, body) {
-  const r = await fetchWithTimeout(
+  const r = await fetchTimeout(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    }
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts }],
+        generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
+      }),
+    },
+    GEMINI_MS
   );
 
-  const data = await r.json();
-  if (!r.ok) {
-    throw new Error(data.error?.message || `HTTP ${r.status}`);
+  let data;
+  try { data = await r.json(); } catch { data = null; }
+
+  if (!r.ok || !data) {
+    const msg = data?.error?.message || `HTTP ${r.status}`;
+    throw new Error(msg);
   }
 
-  const resultParts = data.candidates?.[0]?.content?.parts || [];
-  const imagePart = resultParts.find((p) => p.inlineData);
-  const textPart = resultParts.find((p) => p.text);
+  const candidates = data.candidates?.[0]?.content?.parts || [];
+  const imgPart  = candidates.find((p) => p.inlineData);
+  const textPart = candidates.find((p) => p.text);
 
-  if (!imagePart) {
+  if (!imgPart) {
     return { image: null, refusal: textPart?.text || 'görsel döndürmedi' };
   }
 
   return {
-    image: { mimeType: imagePart.inlineData.mimeType, data: imagePart.inlineData.data },
+    image: { mimeType: imgPart.inlineData.mimeType, data: imgPart.inlineData.data },
     text: textPart?.text || '',
+    model: LABELS[model] || model,
   };
 }
 
-// 3) Turn whatever the provider(s) said into one clear, actionable
-//    Turkish message for the user.
-function friendlyError(errors) {
-  const all = errors.join(' | ');
+// =================================================================
+// Yardımcılar
+// =================================================================
+function fetchTimeout(url, options, ms) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { ...options, signal: ctrl.signal })
+    .finally(() => clearTimeout(timer));
+}
 
-  if (/aborted|timeout/i.test(all)) {
-    return 'Görsel servisi zaman aşımına uğradı (istek çok uzun sürdü). Lütfen tekrar deneyin.';
-  }
-  if (/429|quota|rate.?limit|resource.?exhausted/i.test(all)) {
-    return 'Görsel modelleri şu anda istek limitine ulaştı (ücretsiz kotanın sonu olabilir). Lütfen birkaç dakika sonra tekrar deneyin veya diğer kaliteyi (Hızlı/Kaliteli) deneyin.';
-  }
-  if (/api.?key|permission|unauthorized|403|401/i.test(all)) {
-    return 'Gemini API anahtarı geçersiz veya görsel modeline erişim izni yok. Lütfen GEMINI_API_KEY değerini kontrol edin.';
-  }
-  if (/not found|404|unsupported|invalid argument/i.test(all)) {
-    return 'Görsel modeli bulunamadı ya da bu istek desteklenmiyor (model adı Google tarafında değişmiş olabilir). Lütfen tekrar deneyin; sorun sürerse model adının güncellenmesi gerekebilir.';
+function friendlyError(errors, { hasCF, hasTogether, hasGemini }) {
+  const all = errors.join(' | ').toLowerCase();
+
+  // Sadece Gemini yapılandırılmış ve rate-limit yediyse
+  if (!hasCF && !hasTogether && hasGemini) {
+    if (/429|quota|rate.?limit|resource.?exhausted/i.test(all)) {
+      return (
+        'Gemini görsel kotası doldu (ücretsiz katman: ~10 istek/dakika). ' +
+        'Birkaç dakika bekleyip tekrar deneyin. ' +
+        'Daha güvenilir görsel üretimi için lütfen Cloudflare veya Together AI API anahtarı ekleyin (README).'
+      );
+    }
   }
 
-  const last = errors[errors.length - 1] || 'bilinmeyen hata';
+  if (/abort|timeout/i.test(all)) {
+    return 'Görsel servisi zaman aşımına uğradı. Lütfen tekrar deneyin.';
+  }
+  if (/429|quota|rate.?limit|resource.?exhausted|exceeded/i.test(all)) {
+    return 'Tüm görsel sağlayıcıları şu anda istek limitine ulaştı. Lütfen birkaç dakika sonra tekrar deneyin.';
+  }
+  if (/auth|api.?key|permission|unauthorized|forbidden|403|401/i.test(all)) {
+    return 'Görsel sağlayıcısına erişim reddedildi. API anahtarlarınızı kontrol edin (Cloudflare / Together / Gemini).';
+  }
+  if (/not found|404|unsupported/i.test(all)) {
+    return 'Görsel modeli bulunamadı (model adı değişmiş olabilir). Lütfen tekrar deneyin.';
+  }
+
+  const last = errors.at(-1) || 'bilinmeyen hata';
   return 'Görsel oluşturulamadı: ' + last;
 }
